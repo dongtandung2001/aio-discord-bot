@@ -1,7 +1,12 @@
 from discord.ext import commands
 from dotenv import load_dotenv
 import os
+from PIL import Image
+import logging
 load_dotenv()
+
+
+
 
 from openai import OpenAI
 from collections import defaultdict
@@ -36,6 +41,11 @@ class Conversation(commands.Cog):
     async def history(self, ctx):
         res = list(map(lambda x: f'{x["role"]}: {x["content"]}\n', self.conversations[ctx.author]))
         return await ctx.send("".join(res))
+    
+    @conversation.command()
+    async def image(self, ctx):
+        image_url = ctx.message.attachments[0]
+        return await ctx.send('image sent')
     
 async def setup(client:commands.Bot) -> None:
     await client.add_cog(Conversation(client))
