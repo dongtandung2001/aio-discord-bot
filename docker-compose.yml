@@ -1,0 +1,10 @@
+version: "1"
+services:
+  server:
+    build:
+      dockerfile: ./Dockerfile
+      context: .
+    volumes:
+      - ./server.py:/server/server.py
+      - ./cogs:/server/cogs
+      - ./.env:/server/.env
