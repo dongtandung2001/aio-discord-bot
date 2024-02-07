@@ -1,12 +1,7 @@
 from discord.ext import commands
 from dotenv import load_dotenv
 import os
-from PIL import Image
-import logging
 load_dotenv()
-
-
-
 
 from openai import OpenAI
 from collections import defaultdict
@@ -26,7 +21,6 @@ class Conversation(commands.Cog):
         response = self.openaiClient.chat.completions.create(
             model = self.gpt_model,
             messages= self.conversations[ctx.author],
-            max_tokens=512
         )
         self.conversations[ctx.author].append({"role": "system", "content": response.choices[0].message.content})
 

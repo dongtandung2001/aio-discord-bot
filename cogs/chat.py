@@ -11,24 +11,22 @@ from openai import OpenAI
 from PIL import Image
 import requests
 import pytesseract
-import uuid
-class Ask(commands.Cog):
+class Chat(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.openaiClient = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
         self.gpt_model = "gpt-3.5-turbo" 
 
-    @commands.group(name='ask', invoke_without_command=True)
-    async def ask(self, ctx, *, args):
+    @commands.group(name='chat', invoke_without_command=True)
+    async def chat(self, ctx, *, args):
         await ctx.typing()
         response = self.openaiClient.chat.completions.create(
             model = self.gpt_model,
             messages= [{"role": "user", "content": args}],
-            max_tokens=512
         )
-        await ctx.send(response.choices[0].message.content)
+        await ctx.send(response.choices[0].message.content[0:3900])
     
-    @ask.command()
+    @chat.command()
     async def image(self, ctx):
         pytesseract.pytesseract.tesseract_cmd = os.environ['TESSERACT_PATH']
         image_url = ctx.message.attachments[0].url
@@ -42,10 +40,9 @@ class Ask(commands.Cog):
         response = self.openaiClient.chat.completions.create(
             model = self.gpt_model,
             messages= [{"role": "user", "content": text}],
-            max_tokens=512
         )
         await ctx.send(response.choices[0].message.content)
 
     
 async def setup(client:commands.Bot) -> None:
-    await client.add_cog(Ask(client)) 
+    await client.add_cog(Chat(client)) 
