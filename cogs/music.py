@@ -19,23 +19,34 @@ class YTDLSource(discord.PCMVolumeTransformer):
         "noplaylist": True,
     }
 
-    def __init__(self, original: discord.FFmpegPCMAudio, *, volume: float = 0.5):
+    FFMPEG_OPTIONS = {
+        "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        "options": "-vn",
+    }
+
+    def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
         super().__init__(original, volume)
+        self.info = info
+        self.url = info.get("url")
+        self.title = info.get("title")
 
     @classmethod
     async def search(cls, kw):
         with YoutubeDL(cls.YDL_OPTIONS) as ydl:
             try:
-                info = ydl.extract_info(kw, download=False)
+                info = ydl.extract_info("ytsearch:%s" % kw, download=False)
                 if "entries" in info:
                     info = info["entries"][0]
                 else:
-                    print("Result not found")
+                    print(
+                        "@YTDLSource.Search: Result not found with the give url/keyword"
+                    )
                     return None
+
             except Exception:
-                print(Exception)
+                print("@YTDLSource.Search", Exception)
                 return False
-        return info
+        return cls(discord.FFmpegPCMAudio(info["url"], **cls.FFMPEG_OPTIONS), info=info)
 
 
 class Music(commands.Cog):
@@ -48,10 +59,6 @@ class Music(commands.Cog):
         self.queue = []
         self.history = []
 
-        self.FFMPEG_OPTIONS = {
-            "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-            "options": "-vn",
-        }
         self.vc = None
 
     def is_in_vc(self, ctx):
@@ -67,19 +74,24 @@ class Music(commands.Cog):
                 "Please connect to a voice a channel to use this command"
             )
 
-    @commands.command(name="play", help="play a song")
+    @commands.command(name="play", help="play the most relevant track on Yotube ")
     async def play(self, ctx, *, args):
-        sv = ctx.message.guild
-        self.vc = sv.voice_client
-        async with ctx.typing():
-            file = await YTDLSource.search(kw=args)
+        try:
+            sv = ctx.message.guild
+            self.vc = sv.voice_client
+            async with ctx.typing():
+                source = await YTDLSource.search(kw=args)
 
-            self.vc.play(
-                discord.FFmpegPCMAudio(
-                    source=file["url"],
-                )
-            )
-        await ctx.send(f"Now playing {file['title']}")
+                if source == None:
+                    return await ctx.send("Result not found with the give url/keyword")
+                elif source == False:
+                    return await ctx.send("Internal Error")
+                else:
+                    self.vc.play(source)
+            return await ctx.send(f"Now playing {source.title}")
+        except Exception as e:
+            await ctx.send("An error occurred while playing the track.")
+            print(f"Music.play: {e}")
 
 
 async def setup(client: commands.Bot) -> None:
