@@ -1,5 +1,4 @@
 import discord
-import asyncio
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 
@@ -55,30 +54,43 @@ class Music(commands.Cog):
 
         self.is_playing = False
         self.is_paused = False
+        self.is_connected = False
 
         self.queue = []
         self.history = []
 
         self.vc = None
 
-    def is_in_vc(self, ctx):
-        return ctx.message.author.voice == True
+    # Wrapper Function: check if user is in voice channel
+    def is_user_in_vc():
+        async def is_in(ctx):
+            if ctx.message.author.voice == None:
+                await ctx.send("Please join a voice channel to use this command!")
+                return False
+            return True
 
-    @commands.command(name="join", help="Ask bot to join voice channel manually")
+        return commands.check(is_in)
+
+    def connect_to_voice_channel(self, ctx):
+        pass
+
+    @commands.command(name="join", help="Join voice channel manually")
+    @is_user_in_vc()
     async def join(self, ctx):
-        if self.is_in_vc:
-            channel = ctx.message.author.voice.channel
-            return await channel.connect()
-        else:
-            return await ctx.send(
-                "Please connect to a voice a channel to use this command"
-            )
+        channel = ctx.message.author.voice.channel
+        self.is_connected = True
+        return await channel.connect()
 
-    @commands.command(name="play", help="play the most relevant track on Yotube ")
+    @commands.command(name="play", help="Play the most relevant track on Yotube ")
+    @is_user_in_vc()
     async def play(self, ctx, *, args):
+        if self.is_connected == False:
+            channel = ctx.message.author.voice.channel
+            self.is_connected = True
+            await channel.connect()
         try:
-            sv = ctx.message.guild
-            self.vc = sv.voice_client
+            server = ctx.message.guild
+            self.vc = server.voice_client
             async with ctx.typing():
                 source = await YTDLSource.search(kw=args)
 
@@ -87,6 +99,7 @@ class Music(commands.Cog):
                 elif source == False:
                     return await ctx.send("Internal Error")
                 else:
+                    self.is_playing = True
                     self.vc.play(source)
             return await ctx.send(f"Now playing {source.title}")
         except Exception as e:
