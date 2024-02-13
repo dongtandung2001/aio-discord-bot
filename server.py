@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from colorama import Back, Fore, Style
 import time
 import platform
 import asyncio
@@ -30,21 +29,18 @@ class Client(commands.Bot):
         for filename in os.listdir("./cogs"):
             if filename.endswith(".py"):
                 await client.load_extension(f"cogs.{filename[:-3]}")
-                logging.info(f"Loaded Cog:{Fore.YELLOW}{filename[:-3]}")
+                logging.info(f"Loaded Cog:{filename[:-3]}")
             else:
-                logging.info(Fore.YELLOW + "Unable to load pycache folder.")
+                logging.info("Unable to load pycache folder.")
 
     async def on_ready(self):
-        logging.info(" Logged sin as " + Fore.YELLOW + self.user.name)
-        logging.info(" Bot ID " + Fore.YELLOW + str(self.user.id))
-        logging.info(" Discord Version " + Fore.YELLOW + discord.__version__)
-        logging.info(" Python Version " + Fore.YELLOW + str(platform.python_version()))
+        logging.info(" Logged sin as " + self.user.name)
+        logging.info(" Bot ID " + str(self.user.id))
+        logging.info(" Discord Version " + discord.__version__)
+        logging.info(" Python Version " + str(platform.python_version()))
         synced = await self.tree.sync()
-        logging.info(
-            " Slash CMDs Synced " + Fore.YELLOW + str(len(synced)) + " Commands"
-        )
+        logging.info(" Slash CMDs Synced " + str(len(synced)) + " Commands")
 
-    
 
 DISCORD_BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 client = Client()
