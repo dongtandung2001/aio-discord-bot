@@ -13,7 +13,7 @@ class Conversation(commands.Cog):
         self.client = client
         self.openaiClient = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.conversations = defaultdict(list)
-        self.gpt_model = "gpt-3.5-turbo"
+        self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
 
     @commands.group(name="conversation", invoke_without_command=True)
     async def conversation(self, ctx, *, args):

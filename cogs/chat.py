@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 from discord.ext import commands
+from discord import File
 
 from dotenv import load_dotenv
 import os
@@ -18,7 +19,7 @@ class Chat(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
         self.openaiClient = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        self.gpt_model = "gpt-3.5-turbo"
+        self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
 
     @commands.group(name="chat", invoke_without_command=True)
     async def chat(self, ctx, *, args):
@@ -27,7 +28,14 @@ class Chat(commands.Cog):
                 model=self.gpt_model,
                 messages=[{"role": "user", "content": args}],
             )
-            return await ctx.send(response.choices[0].message.content[0:3900])
+            if len(response.choices[0].message.content) < 2000:
+                return await ctx.send(response.choices[0].message.content[0:3900])
+            else:
+                with open("response.txt", "w") as file:
+                    file.write(response.choices[0].message.content)
+                return await ctx.send(
+                    "Answer is in the txt file", file=File("./response.txt")
+                )
 
     @chat.command()
     async def image(self, ctx):
