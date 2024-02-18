@@ -112,21 +112,27 @@ class Music(commands.Cog):
                     else:
                         self.history.append(source)
                         self.vc.play(
-                            source, after=lambda e: self.play_next_in_queue(ctx)
+                            source, after=lambda e: self.async_play_next_in_queue(ctx)
                         )
                         return await ctx.send(f"Now playing {source.title}")
         except Exception as e:
             await ctx.send("An error occurred while playing the track.")
             print(f"Music.play: {e}")
 
-    def play_next_in_queue(self, ctx):
+    async def async_play_next_in_queue(self, ctx):
+        await self.play_next_in_queue(ctx)
+
+    async def play_next_in_queue(self, ctx, error=None):
+        if error:
+            print("Internal error", error)
+            return
         if len(self.queue) == 0:
-            return ctx.send("No more song in queue")
+            return await ctx.send("No more song in queue")
         else:
             self.history.append(self.queue.pop(0))
             source = self.history[-1]
-            self.vc.play(source, after=lambda e: self.play_next_in_queue(ctx))
-            return ctx.send(f"Now playing {source.title}")
+            self.vc.play(source, after=lambda e: self.async_play_next_in_queue(ctx))
+            return await ctx.send(f"Now playing {source.title}")
 
     @commands.command(name="pause", help="Stop music")
     @is_user_in_vc()
