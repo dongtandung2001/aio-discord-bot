@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from discord.ext import commands
 from discord import File
 

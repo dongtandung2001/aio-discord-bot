@@ -45,11 +45,6 @@ class Conversation(commands.Cog):
         )
         return await ctx.send("".join(res))
 
-    @conversation.command()
-    async def image(self, ctx):
-        image_url = ctx.message.attachments[0]
-        return await ctx.send("image sent")
-
 
 async def setup(client: commands.Bot) -> None:
     await client.add_cog(Conversation(client))

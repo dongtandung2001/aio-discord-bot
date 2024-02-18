@@ -1,4 +1,3 @@
-from typing import Any
 import discord
 from discord.ext import commands
 from yt_dlp import YoutubeDL
@@ -62,7 +61,7 @@ class Music(commands.Cog):
     # Wrapper Function: check if user is in voice channel
     def is_user_in_vc():
         async def is_in(ctx):
-            if ctx.message.author.voice == None:
+            if ctx.message.author.voice is None:
                 await ctx.send("Please join a voice channel to use this command!")
                 return False
             return True
@@ -91,7 +90,7 @@ class Music(commands.Cog):
     @commands.command(name="play", help="Play the most relevant track on Yotube ")
     @is_user_in_vc()
     async def play(self, ctx, *, args):
-        if self.is_connected == False:
+        if not self.is_connected:
             channel = ctx.message.author.voice.channel
             self.is_connected = True
             await channel.connect()
@@ -101,9 +100,9 @@ class Music(commands.Cog):
             async with ctx.typing():
                 source = await YTDLSource.search(kw=args)
 
-                if source == None:
+                if source is None:
                     return await ctx.send("Result not found with the give url/keyword")
-                elif source == False:
+                elif not source:
                     return await ctx.send("Internal Error")
                 else:
                     if self.vc.is_playing():
