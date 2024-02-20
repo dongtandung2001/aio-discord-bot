@@ -1,4 +1,6 @@
 import discord
+import datetime
+
 from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
 from yt_dlp import YoutubeDL
@@ -6,6 +8,12 @@ from collections import defaultdict
 
 
 class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
+        super().__init__(original, volume)
+        self.info = info
+        self.url = info.get("url")
+        self.title = info.get("title")
+
     YDL_OPTIONS = {
         "format": "bestaudio",
         "restrictfilenames": True,
@@ -24,12 +32,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
         "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
         "options": "-vn",
     }
-
-    def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
-        super().__init__(original, volume)
-        self.info = info
-        self.url = info.get("url")
-        self.title = info.get("title")
 
     @classmethod
     async def search(cls, kw):
@@ -79,6 +81,22 @@ class Music(commands.Cog):
         elif before.channel is None and after.channel is not None:
             # User joined the voice channel
             print(f"{member.name} has started playing audio")
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        if isinstance(error, commands.CommandError):
+            return
+        print("[" + datetime.time.now() + "] " + str(error))
+        await ctx.send(embed=self.errorEmbedGen(error))
+
+    def errorEmbed(self, error):
+        embed = discord.Embed(
+            title="Error",
+            description="There was an error occur. Restart needed! \n\nError:\n**`"
+            + str(error)
+            + "`**",
+        )
+        return embed
 
     # Wrapper Function: check if user is in voice channel
     def is_user_in_vc():
