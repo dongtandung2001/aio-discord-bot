@@ -24,18 +24,22 @@
 # # print(os.environ["DISCORD_BOT_TOKEN"])
 
 
-def positive_input(func):
-    def wrapper(x):
-        if x <= 0:
-            raise ValueError("Input must be positive")
-        return func(x)
+# def positive_input(func):
+#     def wrapper(x):
+#         if x <= 0:
+#             raise ValueError("Input must be positive")
+#         return func(x)
 
-    return wrapper
-
-
-@positive_input
-def square(x):
-    return x**2
+#     return wrapper
 
 
-print(square(-1))
+# @positive_input
+# def square(x):
+#     return x**2
+
+
+# print(square(-1))
+
+a = "abc"
+if a is bool:
+    print(a)

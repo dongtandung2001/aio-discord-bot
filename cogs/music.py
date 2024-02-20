@@ -1,6 +1,8 @@
 import discord
+from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
 from yt_dlp import YoutubeDL
+from collections import defaultdict
 
 
 class YTDLSource(discord.PCMVolumeTransformer):
@@ -14,7 +16,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         "quiet": True,
         "no_warnings": True,
         "default_search": "auto",
-        "source_address": "0.0.0.0",  # bind to ipv4 since ipv6 addresses cause issues sometimes
+        "source_address": "0.0.0.0",
         "noplaylist": True,
     }
 
@@ -41,7 +43,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
                         "@YTDLSource.Search: Result not found with the give url/keyword"
                     )
                     return None
-
             except Exception:
                 print("@YTDLSource.Search", Exception)
                 return False
@@ -51,12 +52,33 @@ class YTDLSource(discord.PCMVolumeTransformer):
 class Music(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.vc: discord.VoiceClient = None
+        self.vc = defaultdict(discord.VoiceClient)
 
         self.is_connected = False
 
-        self.queue = []
-        self.history = []
+        self.queue = {}
+        self.history = {}
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # make voiceClient / Bot unique in each guild
+        # self.vc[id] = voiceClient of guild with guildID = id
+        # self.queue[id] = queue of songs of guild with guildID = id
+        # self.history[id] = history of songs of guild with guildID = id
+        for guild in self.client.guilds:
+            id = int(guild.id)
+            self.queue[id] = []
+            self.history[id] = []
+            self.vc[id] = None
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        if before.channel is not None and after.channel is None:
+            # User left the voice channel
+            print(f"{member.name} has stopped playing audio")
+        elif before.channel is None and after.channel is not None:
+            # User joined the voice channel
+            print(f"{member.name} has started playing audio")
 
     # Wrapper Function: check if user is in voice channel
     def is_user_in_vc():
@@ -71,32 +93,43 @@ class Music(commands.Cog):
     def connect_to_voice_channel(self, ctx):
         pass
 
-    @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        if before.channel is not None and after.channel is None:
-            # User left the voice channel
-            print(f"{member.name} has stopped playing audio")
-        elif before.channel is None and after.channel is not None:
-            # User joined the voice channel
-            print(f"{member.name} has started playing audio")
+    async def join_helper(self, ctx, channel):
+        id = int(ctx.guild.id)
+        # if there is no voiceClient init yet --> connect
+        # or if there is voiceClient but it's not conncted --> connect
+        if self.vc[id] == None or not self.vc[id].is_connected():
+            # connect
+            self.vc[id] = await channel.connect()
+
+            # cannot find voiceClient
+            if self.vc[id] == None:
+                return await ctx.send("Could not connect to the voice channel")
+            else:
+                # connect successfully
+                return await ctx.send(f"Bot has joined `{channel}`")
+        else:
+            # the bot is already join
+            return await ctx.send(f"Bot is already joined `{channel}`")
 
     @commands.command(name="join", help="Join voice channel manually")
     @is_user_in_vc()
     async def join(self, ctx):
         channel = ctx.message.author.voice.channel
-        self.is_connected = True
-        return await channel.connect()
+        return await self.join_helper(ctx, channel)
 
     @commands.command(name="play", help="Play the most relevant track on Yotube ")
     @is_user_in_vc()
     async def play(self, ctx, *, args):
-        if not self.is_connected:
-            channel = ctx.message.author.voice.channel
-            self.is_connected = True
-            await channel.connect()
         try:
+            channel = ctx.message.author.voice.channel
+            await self.join_helper(ctx, channel)
+        except Exception as e:
+            print(f"Music.play1: {e}")
+
+        try:
+            id = int(ctx.guild.id)
             server = ctx.message.guild
-            self.vc: discord.VoiceClient = server.voice_client
+            self.vc[id] = server.voice_client
             async with ctx.typing():
                 source = await YTDLSource.search(kw=args)
 
@@ -105,40 +138,53 @@ class Music(commands.Cog):
                 elif not source:
                     return await ctx.send("Internal Error")
                 else:
-                    if self.vc.is_playing():
+                    if self.vc[id].is_playing():
                         await ctx.send(f"Added {source.title} to the queue")
-                        self.queue.append(source)
+                        self.queue[id].append(source)
                     else:
-                        self.history.append(source)
-                        self.vc.play(
-                            source, after=lambda e: self.async_play_next_in_queue(ctx)
+                        self.history[id].append(source)
+                        self.vc[id].play(
+                            source,
+                            after=lambda e: self.play_next_in_queue(ctx, id=id),
                         )
                         return await ctx.send(f"Now playing {source.title}")
         except Exception as e:
             await ctx.send("An error occurred while playing the track.")
-            print(f"Music.play: {e}")
+            print(f"Music.play2: {e}")
 
-    async def async_play_next_in_queue(self, ctx):
-        await self.play_next_in_queue(ctx)
-
-    async def play_next_in_queue(self, ctx, error=None):
+    def play_next_in_queue(self, ctx, id, error=None):
         if error:
-            print("Internal error", error)
+            print("play_next_in_queue: ", error)
             return
-        if len(self.queue) == 0:
-            return await ctx.send("No more song in queue")
+        # other audio source is being played
+        if self.vc[id].is_playing():
+            return
+        if len(self.queue[id]) == 0:
+            # async task that cant await here
+            co_routine = ctx.send("No more song in queue")
+            task = run_coroutine_threadsafe(co_routine, self.client.loop)
+            try:
+                task()
+                return
+            except Exception:
+                pass
         else:
-            self.history.append(self.queue.pop(0))
-            source = self.history[-1]
-            self.vc.play(source, after=lambda e: self.async_play_next_in_queue(ctx))
-            return await ctx.send(f"Now playing {source.title}")
+            self.history[id].append(self.queue[id].pop(0))
+            source = self.history[id][-1]
+            self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
+
+            # async task that cant await here
+            co_routine = ctx.send(f"Now playing {source.title}")
+            task = run_coroutine_threadsafe(co_routine, self.client.loop)
+            return
 
     @commands.command(name="pause", help="Stop music")
     @is_user_in_vc()
     async def pause(self, ctx):
+        id = int(ctx.guild.id)
         try:
-            if self.vc.is_playing():
-                self.vc.pause()
+            if self.vc[id].is_playing():
+                self.vc[id].pause()
             else:
                 ctx.send("The bot is not playing anything!")
         except Exception as e:
@@ -147,18 +193,20 @@ class Music(commands.Cog):
     @commands.command(name="resume", help="Resume the audio")
     @is_user_in_vc()
     async def resume(self, ctx):
+        id = int(ctx.guild.id)
         try:
-            if self.vc.is_paused():
-                self.vc.resume()
+            if self.vc[id].is_paused():
+                self.vc[id].resume()
         except Exception as e:
             print(f"Music.resume: {e}")
 
-    @commands.command(name="skip", help="Skip the current audio source")
+    @commands.command(name="stop", help="Stop the current audio source")
     @is_user_in_vc()
-    async def skip(self, ctx):
+    async def stop(self, ctx):
+        id = int(ctx.guild.id)
         try:
-            if self.vc.is_playing():
-                self.vc.stop()
+            if self.vc[id].is_playing():
+                self.vc[id].stop()
         except Exception as e:
             print(f"Music.skip: {e}")
 
