@@ -1,11 +1,10 @@
+from collections import defaultdict
+from openai import OpenAI
 from discord.ext import commands
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
-from openai import OpenAI
-from collections import defaultdict
 
 
 class Conversation(commands.Cog):

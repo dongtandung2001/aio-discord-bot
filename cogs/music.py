@@ -11,8 +11,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
         super().__init__(original, volume)
         self.info = info
-        self.url = info.get("url")
+        self.url = info.get("original_url")
         self.title = info.get("title")
+        self.thumbnail = info.get("thumbnail")
 
     YDL_OPTIONS = {
         "format": "bestaudio",
@@ -40,6 +41,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 info = ydl.extract_info("ytsearch:%s" % kw, download=False)
                 if "entries" in info:
                     info = info["entries"][0]
+
                 else:
                     print(
                         "@YTDLSource.Search: Result not found with the give url/keyword"
@@ -55,8 +57,6 @@ class Music(commands.Cog):
     def __init__(self, client):
         self.client = client
         self.vc = defaultdict(discord.VoiceClient)
-
-        self.is_connected = False
 
         self.queue = {}
         self.history = {}
@@ -98,6 +98,32 @@ class Music(commands.Cog):
         )
         return embed
 
+    def create_embed(self, ctx, song: YTDLSource, embedType):
+        # get embeded's information
+        title = song.title
+        url = song.url
+        thumbnail = song.thumbnail
+        author = ctx.author
+        avatar = author.avatar
+
+        # now playing embed
+        if embedType == 1:
+            now_playing_embed = discord.Embed(
+                title="Now Playing", description=f"[{title}]({url})"
+            )
+
+            now_playing_embed.set_thumbnail(url=thumbnail)
+            now_playing_embed.set_footer(text=f"Requested by {author}", icon_url=avatar)
+            return now_playing_embed
+        # add to queue embed
+        elif embedType == 2:
+            queue_embed = discord.Embed()
+            return queue_embed
+        # information/general message embed
+        elif embedType == 3:
+            msg_embed = discord.Embed()
+            return msg_embed
+
     # Wrapper Function: check if user is in voice channel
     def is_user_in_vc():
         async def is_in(ctx):
@@ -131,7 +157,7 @@ class Music(commands.Cog):
 
     @commands.command(name="join", help="Join voice channel manually")
     @is_user_in_vc()
-    async def join(self, ctx):
+    async def join(self, ctx: commands.Context):
         channel = ctx.message.author.voice.channel
         return await self.join_helper(ctx, channel)
 
@@ -165,7 +191,8 @@ class Music(commands.Cog):
                             source,
                             after=lambda e: self.play_next_in_queue(ctx, id=id),
                         )
-                        return await ctx.send(f"Now playing {source.title}")
+                        now_playing_embed = self.create_embed(ctx, source, 1)
+                        return await ctx.send(embed=now_playing_embed)
         except Exception as e:
             await ctx.send("An error occurred while playing the track.")
             print(f"Music.play2: {e}")
@@ -182,21 +209,22 @@ class Music(commands.Cog):
             co_routine = ctx.send("No more song in queue")
             task = run_coroutine_threadsafe(co_routine, self.client.loop)
             try:
-                task()
-                return
-            except Exception:
+                task
+            except Exception as e:
                 print("Music.play_next_in_queue1:", e)
 
         else:
             self.history[id].append(self.queue[id].pop(0))
             source = self.history[id][-1]
+
             self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
 
             # async task that cant await here
-            co_routine = ctx.send(f"Now playing {source.title}")
+            now_playing_embed = self.create_embed(ctx, source, 1)
+            co_routine = ctx.send(embed=now_playing_embed)
             task = run_coroutine_threadsafe(co_routine, self.client.loop)
             try:
-                task()
+                task
             except Exception as e:
                 print("Music.play_next_in_queue2:", e)
             return
@@ -232,6 +260,15 @@ class Music(commands.Cog):
                 self.vc[id].stop()
         except Exception as e:
             print(f"Music.skip: {e}")
+
+    @commands.command(name="disconnect", help="Disconnect bot from voice channel")
+    async def disconnect(self, ctx):
+        id = int(ctx.guild.id)
+        if self.vc[id] != None:
+            self.queue[id] = []
+            self.history[id] = []
+            await ctx.send("Bot disconnected from voice channel. Queue cleared!")
+            await self.vc[id].disconnect()
 
 
 async def setup(client: commands.Bot) -> None:

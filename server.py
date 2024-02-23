@@ -10,9 +10,11 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 logging.Formatter.converter = time.gmtime
+format = "%(asctime)s.%(msecs)03dZ %(threadName)s\
+ %(levelname)s:%(name)s:%(message)s"
 
 formatter = logging.basicConfig(
-    format="%(asctime)s.%(msecs)03dZ %(threadName)s %(levelname)s:%(name)s:%(message)s",
+    format=format,
     datefmt="%Y-%m-%dT%H:%M:%S",
     level=logging.INFO,
 )
