@@ -98,13 +98,14 @@ class Music(commands.Cog):
         )
         return embed
 
-    def create_embed(self, ctx, song: YTDLSource, embedType):
+    def create_embed(self, ctx, song: YTDLSource, embedType, msg=""):
         # get embeded's information
-        title = song.title
-        url = song.url
-        thumbnail = song.thumbnail
-        author = ctx.author
-        avatar = author.avatar
+        if song:
+            title = song.title
+            url = song.url
+            thumbnail = song.thumbnail
+            author = ctx.author
+            avatar = author.avatar
 
         # now playing embed
         if embedType == 1:
@@ -117,11 +118,15 @@ class Music(commands.Cog):
             return now_playing_embed
         # add to queue embed
         elif embedType == 2:
-            queue_embed = discord.Embed()
+            queue_embed = discord.Embed(
+                title="Add to queue", description=f"[{title}]({url})"
+            )
+            queue_embed.set_thumbnail(url=thumbnail)
+            queue_embed.set_footer(text=f"Requested by {author}", icon_url=avatar)
             return queue_embed
         # information/general message embed
         elif embedType == 3:
-            msg_embed = discord.Embed()
+            msg_embed = discord.Embed(title="Information", description=msg)
             return msg_embed
 
     # Wrapper Function: check if user is in voice channel
@@ -183,7 +188,8 @@ class Music(commands.Cog):
                     return await ctx.send("Internal Error")
                 else:
                     if self.vc[id].is_playing():
-                        await ctx.send(f"Added {source.title} to the queue")
+                        queue_embed = self.create_embed(ctx, source, 2)
+                        await ctx.send(embed=queue_embed)
                         self.queue[id].append(source)
                     else:
                         self.history[id].append(source)
@@ -206,7 +212,8 @@ class Music(commands.Cog):
             return
         if len(self.queue[id]) == 0:
             # async task that cant await here
-            co_routine = ctx.send("No more song in queue")
+            msg_embed = self.create_embed(ctx, None, 3, "No more song in queue to play")
+            co_routine = ctx.send(embed=msg_embed)
             task = run_coroutine_threadsafe(co_routine, self.client.loop)
             try:
                 task
