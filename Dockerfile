@@ -2,7 +2,13 @@ FROM python:latest
 
 WORKDIR /server
 
-RUN apt-get update && apt-get upgrade 
+RUN apt-get update 
+
+RUN apt-get -y install ffmpeg
+
+RUN apt-get -y install tesseract-ocr
+
+RUN apt-get -y install libtesseract-dev
 
 COPY requirements.txt /server
 

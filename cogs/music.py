@@ -185,7 +185,8 @@ class Music(commands.Cog):
                 task()
                 return
             except Exception:
-                pass
+                print("Music.play_next_in_queue1:", e)
+
         else:
             self.history[id].append(self.queue[id].pop(0))
             source = self.history[id][-1]
@@ -194,6 +195,10 @@ class Music(commands.Cog):
             # async task that cant await here
             co_routine = ctx.send(f"Now playing {source.title}")
             task = run_coroutine_threadsafe(co_routine, self.client.loop)
+            try:
+                task()
+            except Exception as e:
+                print("Music.play_next_in_queue2:", e)
             return
 
     @commands.command(name="pause", help="Stop music")

@@ -19,6 +19,10 @@ class Chat(commands.Cog):
         self.openaiClient = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
 
+    @commands.Cog.listener()
+    async def on_ready(self):
+        print("Using GPT Model: ", self.gpt_model)
+
     @commands.group(name="chat", invoke_without_command=True)
     async def chat(self, ctx, *, args):
         async with ctx.typing():
