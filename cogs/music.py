@@ -60,6 +60,7 @@ class Music(commands.Cog):
 
         self.queue = {}
         self.history = {}
+        self.replay = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -71,6 +72,7 @@ class Music(commands.Cog):
             id = int(guild.id)
             self.queue[id] = []
             self.history[id] = []
+            self.replay[id] = False
             self.vc[id] = None
 
     @commands.Cog.listener()
@@ -85,17 +87,12 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandError):
-            return
-        print("[" + datetime.time.now() + "] " + str(error))
-        await ctx.send(embed=self.errorEmbedGen(error))
+            print("[" + str(datetime.datetime.now().time()) + "] " + str(error))
+            return await ctx.send(embed=self.errorEmbed(error))
 
     def errorEmbed(self, error):
-        embed = discord.Embed(
-            title="Error",
-            description="There was an error occur. Restart needed! \n\nError:\n**`"
-            + str(error)
-            + "`**",
-        )
+        embed = discord.Embed(title="Error", description=f"{str(error)}")
+
         return embed
 
     def create_embed(self, ctx, song: YTDLSource, embedType, msg=""):
@@ -157,8 +154,8 @@ class Music(commands.Cog):
                 # connect successfully
                 return await ctx.send(f"Bot has joined `{channel}`")
         else:
-            # the bot is already join
-            return await ctx.send(f"Bot is already joined `{channel}`")
+            # Already connected
+            return
 
     @commands.command(name="join", help="Join voice channel manually")
     @is_user_in_vc()
@@ -263,10 +260,55 @@ class Music(commands.Cog):
     async def stop(self, ctx):
         id = int(ctx.guild.id)
         try:
-            if self.vc[id].is_playing():
+            if self.vc[id] and self.vc[id].is_playing():
+                # clear queue
+                self.queue[id] = []
+                self.history[id] = []
+                # stop audio
                 self.vc[id].stop()
+                # disconnect bot
+                self.vc[id].disconnect()
+
+                stop_msg_embed = self.create_embed(
+                    ctx, None, 3, "Bot stopped. Clearing queue..."
+                )
+                await ctx.send(embed=stop_msg_embed)
         except Exception as e:
-            print(f"Music.skip: {e}")
+            print(f"Music.stop: {e}")
+
+    @commands.command(
+        name="skip", help="Skip the current playing track, play the next track in queue"
+    )
+    @is_user_in_vc()
+    async def skip(self, ctx):
+        id = int(ctx.guild.id)
+        try:
+            if self.vc[id].is_playing():
+                self.vc[id].pause()
+                self.vc[id].stop()
+                skip_msg_embed = self.create_embed(
+                    ctx, None, 3, "Track skipped successfully"
+                )
+                return await ctx.send(embed=skip_msg_embed)
+        except Exception as e:
+            print(f"Music.skip:", e)
+
+    # @commands.command(
+    #     name="replay",
+    #     help="Turn on replay mode: replay the current track\
+    #             Use it again to turn it off",
+    # )
+    # @is_user_in_vc()
+    # async def replay(self, ctx):
+    #     id = int(ctx.guild.id)
+    #     self.replay = not self.replay
+    #     # On
+    #     if self.replay[id]:
+    #         replay_msg = self.create_embed(ctx, None, 3, "Replay: On")
+    #         await ctx.send(embed=replay_msg)
+    #     else:
+    #         replay_msg = self.create_embed(ctx, None, 3, "Replay: Off")
+    #         await ctx.send(embed=replay_msg)
 
     @commands.command(name="disconnect", help="Disconnect bot from voice channel")
     async def disconnect(self, ctx):
@@ -275,7 +317,7 @@ class Music(commands.Cog):
             self.queue[id] = []
             self.history[id] = []
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
-            await self.vc[id].disconnect()
+            self.vc[id].disconnect()
 
 
 async def setup(client: commands.Bot) -> None:
