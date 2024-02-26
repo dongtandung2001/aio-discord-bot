@@ -8,12 +8,20 @@ Image to text chat: Users can upload images and receive text descriptions from t
 Music feature: Users can listen to music through the bot.
 
 # Installation
-Clone the repository: git clone https://github.com/your-repo-name.git
-Install dependencies: npm install
-Set up the OpenAI API key in your environment variables.
-Set up Discord bot token in your environment variables.
-Run the bot: node bot.js
+Clone the repository: git clone https://github.com/dongtandung2001/aio-discord-bot.git
 
+Install dependencies: `pip install -r requirements.txt`
+
+Set up enviroment variables `cp .env_example .env`
+
+Run the bot: Choose one of these 2
+```sh
+python server.py
+```
+
+```sh
+docker-compose up --build
+```
 # Usage
 Invite the bot to your Discord server.
 
