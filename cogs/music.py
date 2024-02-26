@@ -1,5 +1,6 @@
 import discord
 import datetime
+import logging
 
 from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
@@ -11,6 +12,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
         super().__init__(original, volume)
         self.info = info
+        self.playable_url = info.get("url")
         self.url = info.get("original_url")
         self.title = info.get("title")
         self.thumbnail = info.get("thumbnail")
@@ -35,7 +37,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
     }
 
     @classmethod
-    async def search(cls, kw):
+    async def search_and_create_source(cls, kw):
         with YoutubeDL(cls.YDL_OPTIONS) as ydl:
             try:
                 info = ydl.extract_info("ytsearch:%s" % kw, download=False)
@@ -43,14 +45,37 @@ class YTDLSource(discord.PCMVolumeTransformer):
                     info = info["entries"][0]
 
                 else:
-                    print(
-                        "@YTDLSource.Search: Result not found with the give url/keyword"
+                    logging.error(
+                        "@YTDLSource.search_and_create_source: Result not found with the give url/keyword"
                     )
                     return None
             except Exception:
-                print("@YTDLSource.Search", Exception)
+                logging.error("@YTDLSource.search_and_create_source", Exception)
                 return False
         return cls(discord.FFmpegPCMAudio(info["url"], **cls.FFMPEG_OPTIONS), info=info)
+
+    @classmethod
+    async def search_yt(cls, kw):
+        with YoutubeDL(cls.YDL_OPTIONS) as ydl:
+            try:
+                info = ydl.extract_info("ytsearch:%s" % kw, download=False)
+                if "entries" in info:
+                    info = info["entries"][0]
+                    return info
+                else:
+                    logging.error(
+                        "@YTDLSource.search_and_create_source: Result not found with the give url/keyword"
+                    )
+                    return None
+            except Exception:
+                logging.error("@YTDLSource.search_and_create_source", Exception)
+                return False
+
+    @classmethod
+    async def create_source(cls, info):
+        return cls(
+            discord.FFmpegPCMAudio(info.playable_url, **cls.FFMPEG_OPTIONS), info=info
+        )
 
 
 class Music(commands.Cog):
@@ -79,15 +104,15 @@ class Music(commands.Cog):
     async def on_voice_state_update(self, member, before, after):
         if before.channel is not None and after.channel is None:
             # User left the voice channel
-            print(f"{member.name} has stopped playing audio")
+            logging.info(f"{member.name} has stopped playing audio")
         elif before.channel is None and after.channel is not None:
             # User joined the voice channel
-            print(f"{member.name} has started playing audio")
+            logging.info(f"{member.name} has started playing audio")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandError):
-            print("[" + str(datetime.datetime.now().time()) + "] " + str(error))
+            logging.info("[" + str(datetime.datetime.now().time()) + "] " + str(error))
             return await ctx.send(embed=self.errorEmbed(error))
 
     def errorEmbed(self, error):
@@ -170,14 +195,14 @@ class Music(commands.Cog):
             channel = ctx.message.author.voice.channel
             await self.join_helper(ctx, channel)
         except Exception as e:
-            print(f"Music.play1: {e}")
+            logging.error(f"Music.play1: {e}")
 
         try:
             id = int(ctx.guild.id)
             server = ctx.message.guild
             self.vc[id] = server.voice_client
             async with ctx.typing():
-                source = await YTDLSource.search(kw=args)
+                source = await YTDLSource.search_and_create_source(kw=args)
 
                 if source is None:
                     return await ctx.send("Result not found with the give url/keyword")
@@ -198,40 +223,69 @@ class Music(commands.Cog):
                         return await ctx.send(embed=now_playing_embed)
         except Exception as e:
             await ctx.send("An error occurred while playing the track.")
-            print(f"Music.play2: {e}")
+            logging.error(f"Music.play2: {e}")
 
     def play_next_in_queue(self, ctx, id, error=None):
         if error:
-            print("play_next_in_queue: ", error)
+            logging.error("play_next_in_queue: ", error)
             return
         # other audio source is being played
         if self.vc[id].is_playing():
+            logging.info("Audio is being played")
             return
-        if len(self.queue[id]) == 0:
-            # async task that cant await here
-            msg_embed = self.create_embed(ctx, None, 3, "No more song in queue to play")
-            co_routine = ctx.send(embed=msg_embed)
-            task = run_coroutine_threadsafe(co_routine, self.client.loop)
-            try:
-                task
-            except Exception as e:
-                print("Music.play_next_in_queue1:", e)
 
+        # check if replay option is on:
+        if self.replay[id]:
+            # check if there is something in the history to replay
+            if len(self.history[id]) > 0:
+                # get the source to replay
+                replay_source = self.history[id][-1]
+
+                # create new source with the same info to play
+                # old source cannot put in here to replay
+                source = YTDLSource(
+                    discord.FFmpegPCMAudio(
+                        replay_source.playable_url, **YTDLSource.FFMPEG_OPTIONS
+                    ),
+                    info=replay_source.info,
+                )
+                self.vc[id].play(
+                    source, after=lambda e: self.play_next_in_queue(ctx, id)
+                )
+                return
         else:
-            self.history[id].append(self.queue[id].pop(0))
-            source = self.history[id][-1]
+            # check if there is anything in queue to play_next
+            if len(self.queue[id]) == 0:
+                # async task that cant await here
+                msg_embed = self.create_embed(
+                    ctx, None, 3, "No more song in queue to play"
+                )
+                co_routine = ctx.send(embed=msg_embed)
+                task = run_coroutine_threadsafe(co_routine, self.client.loop)
+                try:
+                    task
+                except Exception as e:
+                    logging.error("Music.play_next_in_queue1:", e)
 
-            self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
+            else:
+                # get the next in queue
+                self.history[id].append(self.queue[id].pop(0))
+                source = self.history[id][-1]
 
-            # async task that cant await here
-            now_playing_embed = self.create_embed(ctx, source, 1)
-            co_routine = ctx.send(embed=now_playing_embed)
-            task = run_coroutine_threadsafe(co_routine, self.client.loop)
-            try:
-                task
-            except Exception as e:
-                print("Music.play_next_in_queue2:", e)
-            return
+                # play audio source
+                self.vc[id].play(
+                    source, after=lambda e: self.play_next_in_queue(ctx, id)
+                )
+
+                # async task that cant await here
+                now_playing_embed = self.create_embed(ctx, source, 1)
+                co_routine = ctx.send(embed=now_playing_embed)
+                task = run_coroutine_threadsafe(co_routine, self.client.loop)
+                try:
+                    task
+                except Exception as e:
+                    logging.error("Music.play_next_in_queue2:", e)
+                return
 
     @commands.command(name="pause", help="Stop music")
     @is_user_in_vc()
@@ -243,7 +297,7 @@ class Music(commands.Cog):
             else:
                 ctx.send("The bot is not playing anything!")
         except Exception as e:
-            print(f"Music.pause: {e}")
+            logging.error(f"Music.pause: {e}")
 
     @commands.command(name="resume", help="Resume the audio")
     @is_user_in_vc()
@@ -253,7 +307,7 @@ class Music(commands.Cog):
             if self.vc[id].is_paused():
                 self.vc[id].resume()
         except Exception as e:
-            print(f"Music.resume: {e}")
+            logging.error(f"Music.resume: {e}")
 
     @commands.command(name="stop", help="Stop the current audio source")
     @is_user_in_vc()
@@ -267,14 +321,14 @@ class Music(commands.Cog):
                 # stop audio
                 self.vc[id].stop()
                 # disconnect bot
-                self.vc[id].disconnect()
+                await self.vc[id].disconnect()
 
                 stop_msg_embed = self.create_embed(
                     ctx, None, 3, "Bot stopped. Clearing queue..."
                 )
                 await ctx.send(embed=stop_msg_embed)
         except Exception as e:
-            print(f"Music.stop: {e}")
+            logging.error(f"Music.stop: {e}")
 
     @commands.command(
         name="skip", help="Skip the current playing track, play the next track in queue"
@@ -291,24 +345,24 @@ class Music(commands.Cog):
                 )
                 return await ctx.send(embed=skip_msg_embed)
         except Exception as e:
-            print(f"Music.skip:", e)
+            logging.error(f"Music.skip:", e)
 
-    # @commands.command(
-    #     name="replay",
-    #     help="Turn on replay mode: replay the current track\
-    #             Use it again to turn it off",
-    # )
-    # @is_user_in_vc()
-    # async def replay(self, ctx):
-    #     id = int(ctx.guild.id)
-    #     self.replay = not self.replay
-    #     # On
-    #     if self.replay[id]:
-    #         replay_msg = self.create_embed(ctx, None, 3, "Replay: On")
-    #         await ctx.send(embed=replay_msg)
-    #     else:
-    #         replay_msg = self.create_embed(ctx, None, 3, "Replay: Off")
-    #         await ctx.send(embed=replay_msg)
+    @commands.command(
+        name="replay",
+        help="Turn on replay mode: replay the current track\
+                Use it again to turn it off",
+    )
+    @is_user_in_vc()
+    async def replay(self, ctx):
+        id = int(ctx.guild.id)
+        self.replay[id] = not self.replay[id]
+        # On
+        if self.replay[id]:
+            replay_msg = self.create_embed(ctx, None, 3, "Replay: On")
+            await ctx.send(embed=replay_msg)
+        else:
+            replay_msg = self.create_embed(ctx, None, 3, "Replay: Off")
+            await ctx.send(embed=replay_msg)
 
     @commands.command(name="disconnect", help="Disconnect bot from voice channel")
     async def disconnect(self, ctx):
@@ -317,7 +371,7 @@ class Music(commands.Cog):
             self.queue[id] = []
             self.history[id] = []
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
-            self.vc[id].disconnect()
+            await self.vc[id].disconnect()
 
 
 async def setup(client: commands.Bot) -> None:
