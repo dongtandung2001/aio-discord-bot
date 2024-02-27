@@ -1,11 +1,17 @@
 import discord
 import datetime
 import logging
+import json
 
 from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
 from yt_dlp import YoutubeDL
-from collections import defaultdict
+
+# to implement
+# 1. search feature
+# 2. show history of tracks
+# 3. shuffle queue
+# 4. re-create history and play it (shuffle option available)
 
 
 class YTDLSource(discord.PCMVolumeTransformer):
@@ -55,12 +61,14 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return cls(discord.FFmpegPCMAudio(info["url"], **cls.FFMPEG_OPTIONS), info=info)
 
     @classmethod
-    async def search_yt(cls, kw):
+    async def search_yt(cls, kw, number_of_result):
         with YoutubeDL(cls.YDL_OPTIONS) as ydl:
             try:
-                info = ydl.extract_info("ytsearch:%s" % kw, download=False)
+                info = ydl.extract_info(
+                    f"ytsearch{number_of_result}:{kw}", download=False
+                )
                 if "entries" in info:
-                    info = info["entries"][0]
+                    info = info["entries"]
                     return info
                 else:
                     logging.error(
@@ -73,15 +81,13 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
     @classmethod
     async def create_source(cls, info):
-        return cls(
-            discord.FFmpegPCMAudio(info.playable_url, **cls.FFMPEG_OPTIONS), info=info
-        )
+        return cls(discord.FFmpegPCMAudio(info["url"], **cls.FFMPEG_OPTIONS), info=info)
 
 
 class Music(commands.Cog):
     def __init__(self, client):
         self.client = client
-        self.vc = defaultdict(discord.VoiceClient)
+        self.vc = {}
 
         self.queue = {}
         self.history = {}
@@ -372,6 +378,48 @@ class Music(commands.Cog):
             self.history[id] = []
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
             await self.vc[id].disconnect()
+
+    @commands.command(
+        "search", help="Search tracks on youtube and pick one to add to queue/play"
+    )
+    @is_user_in_vc()
+    async def search(self, ctx, *, kw):
+        id = int(ctx.guild.id)
+        channel = ctx.message.author.voice.channel
+        await self.join_helper(ctx, channel)
+        async with ctx.typing():
+            results = await YTDLSource.search_yt(kw, 5)
+            result_titles = [
+                f'`{i + 1}. {result["title"]}`' for i, result in enumerate(results)
+            ]
+            for result in results:
+                print(result["title"])
+            await ctx.send("Which one?\n" + "\n".join(result_titles))
+
+            # check if the user who is replying is the same as the user use command
+            def check(message):
+                return message.author.id == ctx.author.id
+
+            user_msg = await self.client.wait_for("message", check=check)
+            await ctx.send(f"You picked {user_msg.content}")
+
+            chosen_track = results[int(user_msg.content) - 1]
+
+            source = await YTDLSource.create_source(info=chosen_track)
+            print(source)
+            # play or add to queue
+            if self.vc[id].is_playing():
+                queue_embed = self.create_embed(ctx, source, 2)
+                await ctx.send(embed=queue_embed)
+                self.queue[id].append(source)
+            else:
+                self.history[id].append(source)
+                self.vc[id].play(
+                    source,
+                    after=lambda e: self.play_next_in_queue(ctx, id=id),
+                )
+                now_playing_embed = self.create_embed(ctx, source, 1)
+                return await ctx.send(embed=now_playing_embed)
 
 
 async def setup(client: commands.Bot) -> None:
