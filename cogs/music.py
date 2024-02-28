@@ -194,6 +194,20 @@ class Music(commands.Cog):
         channel = ctx.message.author.voice.channel
         return await self.join_helper(ctx, channel)
 
+    async def play_or_add_to_queue(self, ctx, source, id):
+        if self.vc[id].is_playing():
+            queue_embed = self.create_embed(ctx, source, 2)
+            await ctx.send(embed=queue_embed)
+            self.queue[id].append(source)
+        else:
+            self.history[id].append(source)
+            self.vc[id].play(
+                source,
+                after=lambda e: self.play_next_in_queue(ctx, id=id),
+            )
+            now_playing_embed = self.create_embed(ctx, source, 1)
+            return await ctx.send(embed=now_playing_embed)
+
     @commands.command(name="play", help="Play the most relevant track on Yotube ")
     @is_user_in_vc()
     async def play(self, ctx, *, args):
@@ -215,21 +229,39 @@ class Music(commands.Cog):
                 elif not source:
                     return await ctx.send("Internal Error")
                 else:
-                    if self.vc[id].is_playing():
-                        queue_embed = self.create_embed(ctx, source, 2)
-                        await ctx.send(embed=queue_embed)
-                        self.queue[id].append(source)
-                    else:
-                        self.history[id].append(source)
-                        self.vc[id].play(
-                            source,
-                            after=lambda e: self.play_next_in_queue(ctx, id=id),
-                        )
-                        now_playing_embed = self.create_embed(ctx, source, 1)
-                        return await ctx.send(embed=now_playing_embed)
+                    return await self.play_or_add_to_queue(ctx, source, id)
         except Exception as e:
             await ctx.send("An error occurred while playing the track.")
             logging.error(f"Music.play2: {e}")
+
+    @commands.command(
+        "search", help="Search tracks on youtube and pick one to add to queue/play"
+    )
+    @is_user_in_vc()
+    async def search(self, ctx, *, kw):
+        id = int(ctx.guild.id)
+        channel = ctx.message.author.voice.channel
+        await self.join_helper(ctx, channel)
+        async with ctx.typing():
+            results = await YTDLSource.search_yt(kw, 5)
+            result_titles = [
+                f'`{i + 1}. {result["title"]}`' for i, result in enumerate(results)
+            ]
+
+            await ctx.send("Which one?\n" + "\n".join(result_titles))
+
+            # check if the user who is replying is the same as the user use command
+            def check(message):
+                return message.author.id == ctx.author.id
+
+            user_msg = await self.client.wait_for("message", check=check)
+            await ctx.send(f"You picked {user_msg.content}")
+
+            chosen_track = results[int(user_msg.content) - 1]
+            source = await YTDLSource.create_source(info=chosen_track)
+
+            # play or add to queue
+            return await self.play_or_add_to_queue(ctx, source, id)
 
     def play_next_in_queue(self, ctx, id, error=None):
         if error:
@@ -378,48 +410,6 @@ class Music(commands.Cog):
             self.history[id] = []
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
             await self.vc[id].disconnect()
-
-    @commands.command(
-        "search", help="Search tracks on youtube and pick one to add to queue/play"
-    )
-    @is_user_in_vc()
-    async def search(self, ctx, *, kw):
-        id = int(ctx.guild.id)
-        channel = ctx.message.author.voice.channel
-        await self.join_helper(ctx, channel)
-        async with ctx.typing():
-            results = await YTDLSource.search_yt(kw, 5)
-            result_titles = [
-                f'`{i + 1}. {result["title"]}`' for i, result in enumerate(results)
-            ]
-            for result in results:
-                print(result["title"])
-            await ctx.send("Which one?\n" + "\n".join(result_titles))
-
-            # check if the user who is replying is the same as the user use command
-            def check(message):
-                return message.author.id == ctx.author.id
-
-            user_msg = await self.client.wait_for("message", check=check)
-            await ctx.send(f"You picked {user_msg.content}")
-
-            chosen_track = results[int(user_msg.content) - 1]
-
-            source = await YTDLSource.create_source(info=chosen_track)
-            print(source)
-            # play or add to queue
-            if self.vc[id].is_playing():
-                queue_embed = self.create_embed(ctx, source, 2)
-                await ctx.send(embed=queue_embed)
-                self.queue[id].append(source)
-            else:
-                self.history[id].append(source)
-                self.vc[id].play(
-                    source,
-                    after=lambda e: self.play_next_in_queue(ctx, id=id),
-                )
-                now_playing_embed = self.create_embed(ctx, source, 1)
-                return await ctx.send(embed=now_playing_embed)
 
 
 async def setup(client: commands.Bot) -> None:
