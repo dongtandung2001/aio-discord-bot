@@ -247,6 +247,7 @@ class Music(commands.Cog):
             result_titles = [
                 f'`{i + 1}. {result["title"]}`' for i, result in enumerate(results)
             ]
+            result_titles.append("\nType '0' or 'cancel' to cancel search")
 
             await ctx.send("Which one?\n" + "\n".join(result_titles))
 
@@ -255,8 +256,9 @@ class Music(commands.Cog):
                 return message.author.id == ctx.author.id
 
             user_msg = await self.client.wait_for("message", check=check)
-            await ctx.send(f"You picked {user_msg.content}")
 
+            if user_msg.content == "cancel" or user_msg.content == "0":
+                return await ctx.send("Cancelled search")
             chosen_track = results[int(user_msg.content) - 1]
             source = await YTDLSource.create_source(info=chosen_track)
 
@@ -410,6 +412,24 @@ class Music(commands.Cog):
             self.history[id] = []
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
             await self.vc[id].disconnect()
+
+    @commands.command(name="history", help="Clear queue")
+    @is_user_in_vc()
+    async def history(self, ctx):
+        id = int(ctx.guild.id)
+        if len(self.history[id]) > 0:
+            history_titles = [
+                f"`{i + 1}. {history.title}`"
+                for i, history in enumerate(self.history[id])
+            ]
+            await ctx.send("\n".join(history_titles))
+        else:
+            await ctx.send("I have not played any tracks")
+
+    @commands.command(name="clear_queue", help="Clear queue")
+    @is_user_in_vc()
+    async def clear_queue(self, ctx):
+        id = int(ctx.guild.id)
 
 
 async def setup(client: commands.Bot) -> None:
