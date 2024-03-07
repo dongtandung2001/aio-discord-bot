@@ -42,23 +42,23 @@
 # a = "abc"
 # if a is bool:
 #     print(a)
-from openai import OpenAI
+# from openai import OpenAI
 
-client = OpenAI(api_key="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")
+# client = OpenAI()
 
-try:
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo-012",
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant designed to output JSON.",
-            },
-            {"role": "user", "content": "Who won the world series in 2020?"},
-        ],
-    )
-    print(response.choices[0].message.content)
-except Exception as e:
-    print("Error:\n", e.code)
-    print(type(e))
+# try:
+#     response = client.chat.completions.create(
+#         model="gpt-3.5-turbo-012",
+#         response_format={"type": "json_object"},
+#         messages=[
+#             {
+#                 "role": "system",
+#                 "content": "You are a helpful assistant designed to output JSON.",
+#             },
+#             {"role": "user", "content": "Who won the world series in 2020?"},
+#         ],
+#     )
+#     print(response.choices[0].message.content)
+# except Exception as e:
+#     print("Error:\n", e.code)
+#     print(type(e))
