@@ -85,7 +85,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
 
 class Music(commands.Cog):
-    def __init__(self, client):
+    def __init__(self, client: commands.Bot):
         self.client = client
         self.vc = {}
 
@@ -115,11 +115,11 @@ class Music(commands.Cog):
             # User joined the voice channel
             logging.info(f"{member.name} has started playing audio")
 
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.CommandError):
-            logging.info("[" + str(datetime.datetime.now().time()) + "] " + str(error))
-            return await ctx.send(embed=self.errorEmbed(error))
+    # @commands.Cog.listener()
+    # async def on_command_error(self, ctx, error):
+    #     if isinstance(error, commands.CommandError):
+    #         logging.info("[" + str(datetime.datetime.now().time()) + "] " + str(error))
+    #         return await ctx.send(embed=self.errorEmbed(error))
 
     def errorEmbed(self, error):
         embed = discord.Embed(title="Error", description=f"{str(error)}")
@@ -413,8 +413,10 @@ class Music(commands.Cog):
             await ctx.send("Bot disconnected from voice channel. Queue cleared!")
             await self.vc[id].disconnect()
 
-    @commands.command(name="history", help="Clear queue")
+    @commands.command(name="history", help="Show history of tracks played")
     @is_user_in_vc()
+
+    # # # Elaborate: Let user re-play a chosen history track by providing track # in args
     async def history(self, ctx):
         id = int(ctx.guild.id)
         if len(self.history[id]) > 0:
@@ -430,6 +432,8 @@ class Music(commands.Cog):
     @is_user_in_vc()
     async def clear_queue(self, ctx):
         id = int(ctx.guild.id)
+        self.queue[id] = []
+        return await ctx.send("Queue cleared")
 
 
 async def setup(client: commands.Bot) -> None:

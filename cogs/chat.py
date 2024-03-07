@@ -1,7 +1,8 @@
 from discord.ext import commands
 from discord import File
-
 from dotenv import load_dotenv
+
+import discord
 import os
 
 load_dotenv()
@@ -16,31 +17,158 @@ import pytesseract
 class Chat(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
-        self.openaiClient = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
+        # self.openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        # self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
+
+        self.openai_client = {}
+        self.gpt_model = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("Using GPT Model: ", self.gpt_model)
+        for guild in self.client.guilds:
+            id = int(guild.id)
+            self.openai_client[id] = None
+            self.gpt_model[id] = None
+
+    async def is_bot_set_up(self, ctx):
+        id = int(ctx.guild.id)
+        if self.openai_client[id] == None:
+            error_embed = self.create_embed(
+                ctx, "Error", "Bot is not setup. Please use `.setup` to setup the bot"
+            )
+            await ctx.send(embed=error_embed)
+            return False
+        else:
+            return True
+
+    # generate embed message
+    def create_embed(self, ctx, title, msg):
+        msg_embed = discord.Embed(title=title, description=msg)
+        return msg_embed
+
+    @commands.group(
+        name="setup", invoke_without_command=True, help="Activate server's API key"
+    )
+    async def setup(self, ctx: commands.Context):
+        id = int(ctx.guild.id)
+
+        def check(message):
+            return message.author.id == ctx.author.id
+
+        await ctx.send("Enter your OPENAI_API_KEY")
+
+        user_msg = await self.client.wait_for("message", check=check)
+
+        api_key = user_msg.content
+
+        async with ctx.typing():
+            try:
+                self.openai_client[id] = OpenAI(api_key=api_key)
+                self.gpt_model[id] = "gpt-3.5-turbo-0125"
+                # test request with given apikey
+                self.openai_client[id].chat.completions.create(
+                    model=self.gpt_model[id],
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant designed to output JSON.",
+                        },
+                        {
+                            "role": "user",
+                            "content": "Who won the world series in 2020?",
+                        },
+                    ],
+                )
+                succesful_embed = self.create_embed(
+                    ctx,
+                    "Succesfull",
+                    "Valid OPENAI API KEY\nDefault chat model: gpt-3.5-turbo-0125\nYou can change it later by .setup chat_model <model>",
+                )
+
+                await ctx.send(embed=succesful_embed)
+
+            except Exception as e:
+                print("@Chat.setup", e)
+                error_embed = self.create_embed(
+                    ctx, "Error", "Invalid API Key. Please try another key"
+                )
+                await ctx.send(embed=error_embed)
+
+    @setup.command(name="chat_model", help="Change chat model of OPENAI API")
+    async def chat_model(self, ctx, model):
+        # precheck if bot is setup
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+        id = ctx.guild.id
+        async with ctx.typing():
+            try:
+                self.gpt_model[id] = model
+                self.openai_client[id].chat.completions.create(
+                    model=self.gpt_model[id],
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant designed to output JSON.",
+                        },
+                        {
+                            "role": "user",
+                            "content": "Who won the world series in 2020?",
+                        },
+                    ],
+                )
+                success_embed = self.create_embed(
+                    ctx, "Succesfull", f"Successfully update ChatGpt Model to: {model}"
+                )
+                return await ctx.send(embed=success_embed)
+
+            except Exception as e:
+                print("@Chat.setup.chat_model", e)
+                error_embed = self.create_embed(
+                    ctx,
+                    "Error",
+                    "Invalid model. Please use another one. More information on https://platform.openai.com/docs/models",
+                )
+                await ctx.send(embed=error_embed)
 
     @commands.group(name="chat", invoke_without_command=True)
     async def chat(self, ctx, *, args):
+        # precheck if bot is setup
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+
+        id = int(ctx.guild.id)
         async with ctx.typing():
-            response = self.openaiClient.chat.completions.create(
-                model=self.gpt_model,
+            response = self.openai_client[id].chat.completions.create(
+                model=self.gpt_model[id],
                 messages=[{"role": "user", "content": args}],
             )
+
+            # if response length > limit of discord's message, send result through txt file
             if len(response.choices[0].message.content) < 2000:
-                return await ctx.send(response.choices[0].message.content[0:3900])
+                return await ctx.send(response.choices[0].message.content)
             else:
-                with open("response.txt", "w") as file:
+                with open(
+                    f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt", "w"
+                ) as file:
                     file.write(response.choices[0].message.content)
-                return await ctx.send(
-                    "Answer is in the txt file", file=File("./response.txt")
+                await ctx.send(
+                    "Answer is in the txt file",
+                    file=File(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt"),
                 )
+                # clean up responses
+                os.remove(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt")
 
     @chat.command()
     async def image(self, ctx):
+        # precheck if bot is setup
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+
         pytesseract.pytesseract.tesseract_cmd = os.environ["TESSERACT_PATH"]
         image_url = ctx.message.attachments[0].url
 
@@ -50,11 +178,55 @@ class Chat(commands.Cog):
         text = pytesseract.image_to_string(image)
 
         async with ctx.typing():
-            response = self.openaiClient.chat.completions.create(
-                model=self.gpt_model,
+            response = self.openai_client[id].chat.completions.create(
+                model=self.gpt_model[id],
                 messages=[{"role": "user", "content": text}],
             )
-            return await ctx.send(response.choices[0].message.content)
+            # if response length > limit of discord's message, send result through txt file
+            if len(response.choices[0].message.content) < 2000:
+                return await ctx.send(response.choices[0].message.content)
+            else:
+                with open(
+                    f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt", "w"
+                ) as file:
+                    file.write(response.choices[0].message.content)
+                await ctx.send(
+                    "Answer is in the txt file",
+                    file=File(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt"),
+                )
+                # clean up responses
+                os.remove(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt")
+
+    # # Conversation
+    # @commands.group(name="conversation", invoke_without_command=True)
+    # async def conversation(self, ctx, *, args):
+    #     async with ctx.typing():
+    #         self.conversations[ctx.author].append({"role": "user", "content": args})
+
+    #         response = self.openaiClient.chat.completions.create(
+    #             model=self.gpt_model,
+    #             messages=self.conversations[ctx.author],
+    #         )
+    #         self.conversations[ctx.author].append(
+    #             {"role": "system", "content": response.choices[0].message.content}
+    #         )
+
+    #         return await ctx.send(response.choices[0].message.content)
+
+    # @conversation.command()
+    # async def clear(self, ctx):
+    #     self.conversations[ctx.author] = []
+    #     return await ctx.send("Conversation cleared")
+
+    # @conversation.command()
+    # async def history(self, ctx):
+    #     res = list(
+    #         map(
+    #             lambda x: f'{x["role"]}: {x["content"]}\n',
+    #             self.conversations[ctx.author],
+    #         )
+    #     )
+    #     return await ctx.send("".join(res))
 
 
 async def setup(client: commands.Bot) -> None:
