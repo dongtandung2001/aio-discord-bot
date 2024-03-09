@@ -151,16 +151,12 @@ class Chat(commands.Cog):
             if len(response.choices[0].message.content) < 2000:
                 return await ctx.send(response.choices[0].message.content)
             else:
-                with open(
-                    f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt", "w"
-                ) as file:
+                with open(f"./chatResponses/{ctx.author}.txt", "w") as file:
                     file.write(response.choices[0].message.content)
                 await ctx.send(
                     "Answer is in the txt file",
-                    file=File(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt"),
+                    file=File(f"./chatResponses/{ctx.author}.txt"),
                 )
-                # clean up responses
-                os.remove(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt")
 
     @chat.command()
     async def image(self, ctx):
@@ -169,6 +165,7 @@ class Chat(commands.Cog):
         if not is_set_up:
             return
 
+        id = int(ctx.guild.id)
         pytesseract.pytesseract.tesseract_cmd = os.environ["TESSERACT_PATH"]
         image_url = ctx.message.attachments[0].url
 
@@ -186,16 +183,12 @@ class Chat(commands.Cog):
             if len(response.choices[0].message.content) < 2000:
                 return await ctx.send(response.choices[0].message.content)
             else:
-                with open(
-                    f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt", "w"
-                ) as file:
+                with open(f"./chatResponses/{ctx.author}.txt", "w") as file:
                     file.write(response.choices[0].message.content)
                 await ctx.send(
                     "Answer is in the txt file",
-                    file=File(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt"),
+                    file=File(f"./chatResponses/{ctx.author}.txt"),
                 )
-                # clean up responses
-                os.remove(f"./chatResponses/{ctx.guild.id}/{ctx.author}.txt")
 
     # # Conversation
     # @commands.group(name="conversation", invoke_without_command=True)
