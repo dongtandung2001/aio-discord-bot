@@ -1,6 +1,7 @@
 from discord.ext import commands
 from discord import File
 from dotenv import load_dotenv
+from collections import defaultdict
 
 import discord
 import os
@@ -22,6 +23,7 @@ class Chat(commands.Cog):
 
         self.openai_client = {}
         self.gpt_model = {}
+        self.conversations = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -29,6 +31,7 @@ class Chat(commands.Cog):
             id = int(guild.id)
             self.openai_client[id] = None
             self.gpt_model[id] = None
+            self.conversations[id] = defaultdict(list)
 
     async def is_bot_set_up(self, ctx):
         id = int(ctx.guild.id)
@@ -133,6 +136,25 @@ class Chat(commands.Cog):
                 )
                 await ctx.send(embed=error_embed)
 
+    async def answer(self, ctx, response):
+        if len(response.choices[0].message.content) < 2000:
+            return await ctx.send(response.choices[0].message.content)
+        else:
+            with open(f"./chatResponses/{ctx.author}.txt", "w") as file:
+                file.write(response.choices[0].message.content)
+            await ctx.send(
+                "Answer is in the txt file",
+                file=File(f"./chatResponses/{ctx.author}.txt"),
+            )
+
+    def generate_response(self, id, client, model, messages):
+        response = client.chat.completions.create(
+            model=self.gpt_model[id],
+            messages=messages,
+        )
+
+        return response
+
     @commands.group(name="chat", invoke_without_command=True)
     async def chat(self, ctx, *, args):
         # precheck if bot is setup
@@ -142,24 +164,17 @@ class Chat(commands.Cog):
 
         id = int(ctx.guild.id)
         async with ctx.typing():
-            response = self.openai_client[id].chat.completions.create(
-                model=self.gpt_model[id],
-                messages=[{"role": "user", "content": args}],
+            response = self.generate_response(
+                id,
+                self.openai_client[id],
+                self.gpt_model[id],
+                [{"role": "user", "content": args}],
             )
-
             # if response length > limit of discord's message, send result through txt file
-            if len(response.choices[0].message.content) < 2000:
-                return await ctx.send(response.choices[0].message.content)
-            else:
-                with open(f"./chatResponses/{ctx.author}.txt", "w") as file:
-                    file.write(response.choices[0].message.content)
-                await ctx.send(
-                    "Answer is in the txt file",
-                    file=File(f"./chatResponses/{ctx.author}.txt"),
-                )
+            return await self.answer(ctx, response)
 
-    @chat.command()
-    async def image(self, ctx):
+    @chat.command(name="image")
+    async def single_chat_image_chat(self, ctx, *, args=None):
         # precheck if bot is setup
         is_set_up = await self.is_bot_set_up(ctx)
         if not is_set_up:
@@ -173,53 +188,97 @@ class Chat(commands.Cog):
 
         image = Image.open(r.raw)
         text = pytesseract.image_to_string(image)
+        if args is not None:
+            text = args + "\n" + '"' + text + '"'
 
         async with ctx.typing():
-            response = self.openai_client[id].chat.completions.create(
-                model=self.gpt_model[id],
-                messages=[{"role": "user", "content": text}],
+            response = self.generate_response(
+                id,
+                self.openai_client[id],
+                self.gpt_model[id],
+                [{"role": "user", "content": text}],
+            )
+
+            # if response length > limit of discord's message, send result through txt file
+            return await self.answer(ctx, response)
+
+    # Conversation
+    @commands.group(name="conversation", invoke_without_command=True)
+    async def conversation(self, ctx, *, args):
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+        id = int(ctx.guild.id)
+
+        async with ctx.typing():
+            self.conversations[id][ctx.author].append({"role": "user", "content": args})
+
+            response = self.generate_response(
+                id,
+                self.openai_client[id],
+                self.gpt_model[id],
+                self.conversations[id][ctx.author],
+            )
+
+            self.conversations[id][ctx.author].append(
+                {"role": "system", "content": response.choices[0].message.content}
+            )
+
+            # if response length > limit of discord's message, send result through txt file
+            return await self.answer(ctx, response)
+
+    @conversation.command()
+    async def clear(self, ctx):
+        async with ctx.typing():
+            id = int(ctx.guild.id)
+            self.conversations[id][ctx.author] = []
+            return await ctx.send("Conversation cleared")
+
+    @conversation.command()
+    async def history(self, ctx):
+        async with ctx.typing():
+            id = int(ctx.guild.id)
+            if len(self.conversations[id][ctx.author]) == 0:
+                return await ctx.send("No chat to show")
+            res = list(
+                map(
+                    lambda x: f'{x["role"]}: {x["content"]}\n',
+                    self.conversations[id][ctx.author],
+                )
+            )
+            return await ctx.send("".join(res))
+
+    @conversation.command(name="image")
+    async def conversation_image_chat(self, ctx, *, args=None):
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+        id = int(ctx.guild.id)
+        pytesseract.pytesseract.tesseract_cmd = os.environ["TESSERACT_PATH"]
+        image_url = ctx.message.attachments[0].url
+
+        r = requests.get(image_url, stream=True)
+
+        image = Image.open(r.raw)
+        text = pytesseract.image_to_string(image)
+        if args is not None:
+            text = args + "\n" + '"' + text + '"'
+
+        self.conversations[id][ctx.author].append({"role": "user", "content": text})
+
+        async with ctx.typing():
+            response = self.generate_response(
+                id,
+                self.openai_client[id],
+                self.gpt_model[id],
+                self.conversations[id][ctx.author],
+            )
+
+            self.conversations[id][ctx.author].append(
+                {"role": "system", "content": response.choices[0].message.content}
             )
             # if response length > limit of discord's message, send result through txt file
-            if len(response.choices[0].message.content) < 2000:
-                return await ctx.send(response.choices[0].message.content)
-            else:
-                with open(f"./chatResponses/{ctx.author}.txt", "w") as file:
-                    file.write(response.choices[0].message.content)
-                await ctx.send(
-                    "Answer is in the txt file",
-                    file=File(f"./chatResponses/{ctx.author}.txt"),
-                )
-
-    # # Conversation
-    # @commands.group(name="conversation", invoke_without_command=True)
-    # async def conversation(self, ctx, *, args):
-    #     async with ctx.typing():
-    #         self.conversations[ctx.author].append({"role": "user", "content": args})
-
-    #         response = self.openaiClient.chat.completions.create(
-    #             model=self.gpt_model,
-    #             messages=self.conversations[ctx.author],
-    #         )
-    #         self.conversations[ctx.author].append(
-    #             {"role": "system", "content": response.choices[0].message.content}
-    #         )
-
-    #         return await ctx.send(response.choices[0].message.content)
-
-    # @conversation.command()
-    # async def clear(self, ctx):
-    #     self.conversations[ctx.author] = []
-    #     return await ctx.send("Conversation cleared")
-
-    # @conversation.command()
-    # async def history(self, ctx):
-    #     res = list(
-    #         map(
-    #             lambda x: f'{x["role"]}: {x["content"]}\n',
-    #             self.conversations[ctx.author],
-    #         )
-    #     )
-    #     return await ctx.send("".join(res))
+            return await self.answer(ctx, response)
 
 
 async def setup(client: commands.Bot) -> None:
