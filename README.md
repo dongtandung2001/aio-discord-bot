@@ -13,18 +13,21 @@ Music feature: Users can listen to music through the bot.
 ## Installation
 Clone the repository: git clone https://github.com/dongtandung2001/aio-discord-bot.git
 
-Install dependencies: `pip install -r requirements.txt`
+Install dependencies (Don't have to if you run through Docker): `pip install -r requirements.txt`
 
 Set up enviroment variables `cp .env_example .env`
 
 Run the bot: Choose one of these 2
+
+1. Make sure to install ffmpeg.exe and tesseract.ext to use all features
 ```sh
 python server.py
 ```
-
+2. You only need to install Docker to use all features
 ```sh
 docker-compose up --build
 ```
+
 ## Usage
 Invite the bot to your Discord server.
 
@@ -32,17 +35,21 @@ Use the following commands to interact with the bot:
 
 ### Chat Bot
 
+`.setup`: Setup chat bot by entering OpenAI API Key
+
+`.setup chat_model [model]`: Select OpenAI chat model
+
 `.chat [message]`: Start a single chat with the bot.
 
-`.conversation [message]`: Engage in a conversation with the bot.
-
 `.chat image [image]`: Upload a text image to receive answer.
+
+`.conversation [message]`: Engage in a conversation with the bot.
 
 ### Music Bot
 
 `.play [song]`: Play a song using the music feature.
 
-`.replay`: Auto replay the last played track
+`.replay`: Auto replay the last played track. Use again to turn it off
 
 `.join`: Ask bot to join voice channel
 
@@ -52,6 +59,9 @@ Use the following commands to interact with the bot:
 
 `.stop`: Stop the bot, clear queue and leave voice channel
 
+`.history`: Show history of played tracks
+
+`.clear_queue`: Clear queue
 
 ## Contributing
 Contributions are welcome! Feel free to fork the repository and submit a pull request with your improvements.
@@ -61,7 +71,9 @@ This project is licensed under the MIT License.
 
 ## Acknowledgements
 OpenAI API for providing the chat capabilities.
+
 discord.py for enabling bot interactions.
+
 yt_dlp for the music feature.
 
 --- 
