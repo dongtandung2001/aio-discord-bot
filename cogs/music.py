@@ -188,11 +188,16 @@ class Music(commands.Cog):
             # Already connected
             return
 
-    @commands.command(name="join", help="Join voice channel manually")
-    @is_user_in_vc()
-    async def join(self, ctx: commands.Context):
-        channel = ctx.message.author.voice.channel
-        return await self.join_helper(ctx, channel)
+    def replay_helper(self, ctx, id):
+        replay_source = self.history[id][-1]
+        source = YTDLSource(
+            discord.FFmpegPCMAudio(
+                replay_source.playable_url, **YTDLSource.FFMPEG_OPTIONS
+            ),
+            info=replay_source.info,
+        )
+        self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
+        return source
 
     async def play_or_add_to_queue(self, ctx, source, id):
         if self.vc[id].is_playing():
@@ -207,6 +212,12 @@ class Music(commands.Cog):
             )
             now_playing_embed = self.create_embed(ctx, source, 1)
             return await ctx.send(embed=now_playing_embed)
+
+    @commands.command(name="join", help="Join voice channel manually")
+    @is_user_in_vc()
+    async def join(self, ctx: commands.Context):
+        channel = ctx.message.author.voice.channel
+        return await self.join_helper(ctx, channel)
 
     @commands.command(name="play", help="Play the most relevant track on Yotube ")
     @is_user_in_vc()
@@ -278,20 +289,7 @@ class Music(commands.Cog):
         if self.replay[id]:
             # check if there is something in the history to replay
             if len(self.history[id]) > 0:
-                # get the source to replay
-                replay_source = self.history[id][-1]
-
-                # create new source with the same info to play
-                # old source cannot put in here to replay
-                source = YTDLSource(
-                    discord.FFmpegPCMAudio(
-                        replay_source.playable_url, **YTDLSource.FFMPEG_OPTIONS
-                    ),
-                    info=replay_source.info,
-                )
-                self.vc[id].play(
-                    source, after=lambda e: self.play_next_in_queue(ctx, id)
-                )
+                self.replay_helper(ctx, id)
                 return
         else:
             # check if there is anything in queue to play_next
@@ -386,6 +384,14 @@ class Music(commands.Cog):
                 return await ctx.send(embed=skip_msg_embed)
         except Exception as e:
             logging.error(f"Music.skip:", e)
+
+    @commands.command(help="Instant the replay the current track")
+    async def instant_replay(self, ctx):
+        id = int(ctx.guild.id)
+        self.vc[id].pause()
+        replay_source = self.replay_helper(ctx, id)
+        replay_embed = self.create_embed(ctx, replay_source, 1, "Replay")
+        await ctx.send(embed=replay_embed)
 
     @commands.command(
         name="replay",

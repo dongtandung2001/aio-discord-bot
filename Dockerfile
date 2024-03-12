@@ -14,7 +14,4 @@ COPY requirements.txt /server
 
 RUN pip install -r /server/requirements.txt
 
-
-EXPOSE 8000
-
 ENTRYPOINT ["python", "-u", "server.py" ]
