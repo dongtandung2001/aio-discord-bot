@@ -14,4 +14,6 @@ COPY requirements.txt /server
 
 RUN pip install -r /server/requirements.txt
 
+COPY . /server
+
 ENTRYPOINT ["python", "-u", "server.py" ]
