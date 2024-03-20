@@ -1,4 +1,4 @@
-FROM python:latest
+FROM --platform=linux/arm64 python:latest
 
 WORKDIR /server
 
