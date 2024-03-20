@@ -33,7 +33,7 @@ jobs:
       - name: Build and push Docker image to ECR
         run: |
           docker buildx create --use
-          docker buildx inpsect --bootstrap
+          docker buildx inspect --bootstrap
           docker buildx build --platform linux/x86 -t ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_DISCORD_BOT_IMAGE:latest --push .
       - name: Deploy to ECS
         uses: imehedi/actions-awscli-v2@latest
