@@ -7,11 +7,7 @@ from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 
-# to implement
-# 1. search feature
-# 2. show history of tracks
-# 3. shuffle queue
-# 4. re-create history and play it (shuffle option available)
+# TODO: shuffle queue
 
 
 class YTDLSource(discord.PCMVolumeTransformer):
@@ -82,6 +78,13 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def create_source(cls, info):
         return cls(discord.FFmpegPCMAudio(info["url"], **cls.FFMPEG_OPTIONS), info=info)
+
+    @classmethod
+    def renew_source(cls, old_source):
+        return cls(
+            discord.FFmpegPCMAudio(old_source.playable_url, **cls.FFMPEG_OPTIONS),
+            info=old_source.info,
+        )
 
 
 class Music(commands.Cog):
@@ -189,13 +192,8 @@ class Music(commands.Cog):
             return
 
     def replay_helper(self, ctx, id):
-        replay_source = self.history[id][-1]
-        source = YTDLSource(
-            discord.FFmpegPCMAudio(
-                replay_source.playable_url, **YTDLSource.FFMPEG_OPTIONS
-            ),
-            info=replay_source.info,
-        )
+        replay_track = self.history[id][-1]
+        source = YTDLSource.renew_source(replay_track)
         self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
         return source
 
@@ -270,6 +268,8 @@ class Music(commands.Cog):
 
             if user_msg.content == "cancel" or user_msg.content == "0":
                 return await ctx.send("Cancelled search")
+            if int(user_msg.content) > 5:
+                return await ctx.send("Invalid choice")
             chosen_track = results[int(user_msg.content) - 1]
             source = await YTDLSource.create_source(info=chosen_track)
 
@@ -421,8 +421,6 @@ class Music(commands.Cog):
 
     @commands.command(name="history", help="Show history of tracks played")
     @is_user_in_vc()
-
-    # # # Elaborate: Let user re-play a chosen history track by providing track # in args
     async def history(self, ctx):
         id = int(ctx.guild.id)
         if len(self.history[id]) > 0:
@@ -431,8 +429,31 @@ class Music(commands.Cog):
                 for i, history in enumerate(self.history[id])
             ]
             await ctx.send("\n".join(history_titles))
+            await ctx.send(
+                "Would you like to replay any track from the history? Pick the number to replay. Ignore this if you dont want to replay"
+            )
+
+            # check if the user who is replying is the same as the user use command
+            def check(message):
+                return message.author.id == ctx.author.id
+
+            user_msg = await self.client.wait_for("message", check=check)
+
+            if not user_msg.content.isdigit():
+                return
+            if int(user_msg.content) > len(self.history[id]):
+                return await ctx.send("Invalid choice.")
+            # replay
+            replay_track = self.history[id][int(user_msg.content) - 1]
+            source = YTDLSource.renew_source(replay_track)
+            return await self.play_or_add_to_queue(ctx, source, id)
         else:
-            await ctx.send("I have not played any tracks")
+            await ctx.send("No tracks to show")
+
+    async def clear_history(self, ctx):
+        id = int(ctx.guild.id)
+        self.history[id] = []
+        return await ctx.send("History cleared")
 
     @commands.command(name="clear_queue", help="Clear queue")
     @is_user_in_vc()

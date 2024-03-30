@@ -14,6 +14,9 @@ from PIL import Image
 import requests
 import pytesseract
 
+# TODO: Add langchain to let users decide the prompt of the answer
+# FIXME: Fix path to return txt file when response > 4000 length when run the bot using Docker
+
 
 class Chat(commands.Cog):
     def __init__(self, client: commands.Bot):
