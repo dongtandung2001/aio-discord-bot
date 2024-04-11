@@ -9,6 +9,8 @@ from yt_dlp import YoutubeDL
 
 # TODO: shuffle queue
 
+# TODO: Dont add same track from replay to history
+
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
@@ -37,6 +39,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
         "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
         "options": "-vn",
     }
+
+    def __eq__(self, other) -> bool:
+        return self.title == other.title
 
     @classmethod
     async def search_and_create_source(cls, kw):
@@ -192,18 +197,23 @@ class Music(commands.Cog):
             return
 
     def replay_helper(self, ctx, id):
+        # get the track
         replay_track = self.history[id][-1]
+        # create audio source
         source = YTDLSource.renew_source(replay_track)
+        # play
         self.vc[id].play(source, after=lambda e: self.play_next_in_queue(ctx, id))
         return source
 
-    async def play_or_add_to_queue(self, ctx, source, id):
+    async def play_or_add_to_queue(self, ctx, source, id, replay=False):
         if self.vc[id].is_playing():
             queue_embed = self.create_embed(ctx, source, 2)
             await ctx.send(embed=queue_embed)
             self.queue[id].append(source)
         else:
-            self.history[id].append(source)
+            # if it is a replay track, dont have to add it to history
+            if not replay:
+                self.history[id].append(source)
             self.vc[id].play(
                 source,
                 after=lambda e: self.play_next_in_queue(ctx, id=id),
@@ -307,6 +317,9 @@ class Music(commands.Cog):
 
             else:
                 # get the next in queue
+
+                print("check", self.queue[id][0] == self.history[id][-1])
+
                 self.history[id].append(self.queue[id].pop(0))
                 source = self.history[id][-1]
 
@@ -446,7 +459,7 @@ class Music(commands.Cog):
             # replay
             replay_track = self.history[id][int(user_msg.content) - 1]
             source = YTDLSource.renew_source(replay_track)
-            return await self.play_or_add_to_queue(ctx, source, id)
+            return await self.play_or_add_to_queue(ctx, source, id, replay=True)
         else:
             await ctx.send("No tracks to show")
 

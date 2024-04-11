@@ -63,38 +63,52 @@
 #     print("Error:\n", e.code)
 #     print(type(e))
 
-# from langchain_openai import OpenAI
-# from langchain.prompts import PromptTemplate
-# from langchain_community.llms.huggingface_endpoint import HuggingFaceEndpoint
-# import os
-# import dotenv
+from langchain_openai import OpenAI
+from langchain.prompts import PromptTemplate
+from langchain_community.llms.huggingface_endpoint import HuggingFaceEndpoint
+import os
+import dotenv
 
-# dotenv.load_dotenv()
+dotenv.load_dotenv()
 # import getpass
 
 # OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-# template = """Question: {question}
+template = """Question: {question}
 
-# Answer: Let's think step by step."""
+Answer: Let's think step by step."""
 
-# prompt = PromptTemplate.from_template(template)
+prompt = PromptTemplate.from_template(template)
 
 # llm = OpenAI(api_key=OPENAI_API_KEY)
-# # llm = HuggingFaceEndpoint(
-# #     repo_id="mistralai/Mistral-7B-Instruct-v0.2",
-# #     huggingfacehub_api_token=os.environ["HUGGINGFACEHUB_API_TOKEN"],
-# # )
+llm = HuggingFaceEndpoint(
+    repo_id="mistralai/Mistral-7B-Instruct-v0.2",
+    huggingfacehub_api_token=os.environ["HUGGINGFACEHUB_API_TOKEN"],
+)
 
-# from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferMemory
 
-# memory = ConversationBufferMemory()
+memory = ConversationBufferMemory()
 
-# from langchain.chains import ConversationChain
-# import datetime
+from langchain.chains import ConversationChain
 
-# start = datetime.datetime.now()
 # c = ConversationChain(llm=llm, verbose=True, memory=memory)
-# res = c.invoke(input="Do you know sjsu")
-# res = c.invoke(input="how is it?")
-# end = datetime.datetime.now()
-# print(res, (end - start).total_seconds())
+# res = c.invoke(input="Hi there!")
+
+# from langchain.text_splitter import RecursiveCharacterTextSplitter
+# from PyPDF2 import PdfReader
+
+
+# pdfPath = "test.pdf"
+
+# pdf_reader = PdfReader(pdfPath)
+
+# text = ""
+# for page in pdf_reader.pages:
+#     text += page.extract_text()
+
+# text_splitter = RecursiveCharacterTextSplitter(
+#     chunk_size=1000, chunk_overlap=200, length_function=len
+# )
+
+# chunks = text_splitter.split_text(text=text)
+# print(chunks)

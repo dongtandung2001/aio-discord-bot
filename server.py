@@ -36,7 +36,7 @@ class Client(commands.Bot):
                 logging.info("Unable to load pycache folder.")
 
     async def on_ready(self):
-        logging.info(" Logged sin as " + self.user.name)
+        logging.info(" Logged in as " + self.user.name)
         logging.info(" Bot ID " + str(self.user.id))
         logging.info(" Discord Version " + discord.__version__)
         logging.info(" Python Version " + str(platform.python_version()))
