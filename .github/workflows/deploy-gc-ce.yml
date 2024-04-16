@@ -1,0 +1,36 @@
+name: Build and Deploy Discord Bot to GC Compute Engine
+
+on:
+  push:
+    branches: ["main"]
+# AR = artifact registry
+env:
+  GC_AR_DISCORD_BOT_IMAGE: ${{ secrets.GC_AR_DISCORD_BOT_IMAGE }}
+  GC_CE_VM_INSTANCE_NAME: ${{ secrets.GC_CE_VM_INSTANCE_NAME }}
+  GC_PROJECT_ID: ${{ secrets.GC_PROJECT_ID }}
+  GC_AR_REPO: ${{ secrets.GC_AR_REPO }}
+
+jobs:
+  build:
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          project_id: '${{ secrets.GC_PROJECT_ID }}'
+          workload_identity_provider: '${{ secrets.WIP_PROVIDER }}'
+          service_account: '${{ secrets.SA_ACCOUNT }}'
+      
+      - name: Build and push image to Google Cloud Artifact Registry then deploy to Google Cloud Compute Engine
+        run: |
+          gcloud auth configure-docker us-west1-docker.pkg.dev
+          docker build -t us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest .
+          docker push us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest
+          gcloud compute instances update-container $GC_CE_VM_INSTANCE_NAME --container-image us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest --zone us-west1-b
+
