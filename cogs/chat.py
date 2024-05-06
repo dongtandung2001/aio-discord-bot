@@ -158,8 +158,10 @@ class Chat(commands.Cog):
 
         return response
 
-    @commands.group(name="chat", invoke_without_command=True)
-    async def chat(self, ctx, *, args):
+    @commands.group(
+        name="chat", invoke_without_command=True, help="Single chat with the bot"
+    )
+    async def chat(self, ctx, *, args: str = commands.parameter(description="Test")):
         # precheck if bot is setup
         is_set_up = await self.is_bot_set_up(ctx)
         if not is_set_up:
@@ -176,7 +178,10 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
-    @chat.command(name="image")
+    @chat.command(
+        name="image",
+        help=f"pic-to-text and ask the bot (plain text image only)",
+    )
     async def single_chat_image_chat(self, ctx, *, args=None):
         # precheck if bot is setup
         is_set_up = await self.is_bot_set_up(ctx)
@@ -206,7 +211,11 @@ class Chat(commands.Cog):
             return await self.answer(ctx, response)
 
     # Conversation
-    @commands.group(name="conversation", invoke_without_command=True)
+    @commands.group(
+        name="conversation",
+        invoke_without_command=True,
+        help="Conversation chat with bot",
+    )
     async def conversation(self, ctx, *, args):
         is_set_up = await self.is_bot_set_up(ctx)
         if not is_set_up:
@@ -230,14 +239,14 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
-    @conversation.command()
+    @conversation.command(help="Clear conversation memory")
     async def clear(self, ctx):
         async with ctx.typing():
             id = int(ctx.guild.id)
             self.conversations[id][ctx.author] = []
             return await ctx.send("Conversation cleared")
 
-    @conversation.command()
+    @conversation.command(help="Show history of conversation")
     async def history(self, ctx):
         async with ctx.typing():
             id = int(ctx.guild.id)
@@ -251,7 +260,10 @@ class Chat(commands.Cog):
             )
             return await ctx.send("".join(res))
 
-    @conversation.command(name="image")
+    @conversation.command(
+        name="image",
+        help="pic-to-text and ask the bot (plain text image only)",
+    )
     async def conversation_image_chat(self, ctx, *, args=None):
         is_set_up = await self.is_bot_set_up(ctx)
         if not is_set_up:
@@ -282,6 +294,12 @@ class Chat(commands.Cog):
             )
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
+
+
+    # chat with pdf
+    @commands.group(name='pdf', invoke_without_command=True, help="Chat with PDF")
+    async def pdf(self, ctx):
+        return
 
 
 async def setup(client: commands.Bot) -> None:
