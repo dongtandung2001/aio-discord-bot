@@ -35,6 +35,7 @@ class Chat(commands.Cog):
         self.openai_client = {}
         self.gpt_model = {}
         self.conversations = {}
+        self.chroma_collections = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -43,6 +44,7 @@ class Chat(commands.Cog):
             self.openai_client[id] = None
             self.gpt_model[id] = None
             self.conversations[id] = defaultdict(list)
+            self.chroma_collections[id] = []
 
     async def is_bot_set_up(self, ctx):
         id = int(ctx.guild.id)
@@ -307,44 +309,62 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
+    """
+    Chat With PDF
+    """
+
     # chat with pdf
     @commands.group(name="pdf", invoke_without_command=True, help="Chat with PDF")
-    async def pdf(self, ctx, arg=None):
-        is_set_up = await self.is_bot_set_up(ctx)
-        if not is_set_up:
-            return
-
-        if not arg:
-            return await ctx.send(
-                "Please specify a PDF name to chat with. This is only valid on your servers."
-            )
-        await ctx.send("Collection name", arg)
-        return
-
-    """
-    PDF With PDF
-    """
-
-    @pdf.command(name="upload", help="Upload pdf file")
-    async def pdf_upload(self, ctx, arg=None):
+    async def pdf(self, ctx, *, arg=None):
+        id = int(ctx.guild.id)
         # is_set_up = await self.is_bot_set_up(ctx)
         # if not is_set_up:
         #     return
 
         if not arg:
             return await ctx.send(
+                "Please provide a args: .pdf <Filename ref> <question>"
+            )
+        args = arg.split()
+        collection = args[0]
+        question = " ".join(args[1:])
+        response = self.get_answer(question=question, id=id, collection=collection)
+        if not response:
+            return await ctx.send("Filename ref not found")
+        else:
+            return await ctx.send(response["output_text"])
+
+    # TODO: file hanlding ==> make sure its pdf
+    @pdf.command(name="upload", help="Upload pdf file")
+    async def pdf_upload(self, ctx, *, arg=None):
+        # is_set_up = await self.is_bot_set_up(ctx)
+        # if not is_set_up:
+        #     return
+
+        id = int(ctx.guild.id)
+        if not ctx.message.attachments:
+            return await ctx.send("No attachments found")
+
+        if not arg:
+            return await ctx.send(
                 "Please specify a name for this PDF in order to search/query it later."
             )
-
-        if not ctx.message.attachments:
-            await ctx.send("No attachments found")
 
         # let user chat with 1 pdf at a time for now
         # update multiple pdf files later
         if len(ctx.message.attachments) > 1:
             await ctx.send("Please attach only 1 file at a time")
 
-        # TODO: file hanlding ==> make sure its pdf
+        # name ref must be 1 word
+        collection = arg.split()
+        if len(collection) > 1:
+            return await ctx.send("Filename reference must be 1 word")
+
+        collection = collection[0]
+        if not collection.isalnum or collection[0].isdigit():
+            return await ctx.send(
+                "Filename reference cant contain special characters, and it cant start with number"
+            )
 
         await ctx.send("Processing...")
         try:
@@ -358,7 +378,7 @@ class Chat(commands.Cog):
             # Text chunks
             text_chunks = self.get_text_chunks(raw_text)
             # Embedding
-            self.store_vector(text_chunks, collection=arg)
+            self.store_vector(text_chunks, collection, id)
 
             await ctx.send(
                 f"Upload successfully. Please refer to {arg} to chat with your document"
@@ -382,19 +402,24 @@ class Chat(commands.Cog):
         chunks = text_splitter.split_text(text)
         return chunks
 
-    def store_vector(self, text_chunks, collection):
-        embedding2 = OpenAIEmbeddings()
+    def store_vector(self, text_chunks, collection, id):
+        embedding = OpenAIEmbeddings()
 
         vector_db = Chroma.from_texts(
             text_chunks,
-            embedding=embedding2,
+            embedding=embedding,
             persist_directory="./data",
             collection_name=collection,
         )
+
+        self.chroma_collections[id].append(collection)
+
         vector_db.persist()
         return vector_db
 
-    def get_conversational_chain(self):
+    def get_conversational_chain(self, id):
+        # self.openai_client[id]
+
         prompt_template = """
         Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
         provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
@@ -402,9 +427,10 @@ class Chat(commands.Cog):
         Question: \n{question}\n
 
         Answer:
-
+        
         """
-        model = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        api_key = self.openai_client[id].api_key
+        model = OpenAI(api_key=api_key)
 
         prompt = PromptTemplate(
             template=prompt_template, input_variables=["context", "question"]
@@ -413,14 +439,20 @@ class Chat(commands.Cog):
 
         return chain
 
-    def get_answer(self, question):
-        embedding2 = OpenAIEmbeddings()
+    def get_answer(self, question, id, collection):
+        if collection not in self.chroma_collections[id]:
+            return None
 
-        db = Chroma(persist_directory="./data", embedding_function=embedding2)
+        embedding = OpenAIEmbeddings()
+        db = Chroma(
+            persist_directory="./data",
+            embedding_function=embedding,
+            collection_name=collection,
+        )
 
-        docs = db.similarity_search(question, k=1)
+        docs = db.similarity_search(question)
 
-        chain = self.get_conversational_chain()
+        chain = self.get_conversational_chain(id)
 
         response = chain.invoke(
             {"input_documents": docs, "question": question}, return_only_outputs=True

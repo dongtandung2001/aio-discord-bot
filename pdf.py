@@ -36,7 +36,10 @@ def get_vector_store(text_chunks):
     # vector_store.save_local("faiss_index")
 
     vector_db = Chroma.from_texts(
-        text_chunks, embedding=embedding2, persist_directory="./data"
+        text_chunks,
+        embedding=embedding2,
+        persist_directory="./data",
+        collection_name="abc",
     )
     vector_db.persist()
     return vector_db
@@ -84,13 +87,12 @@ text_chunks = get_text_chunks(raw_text)
 get_vector_store(text_chunks)
 
 
-a = get_answer("what happened in Fall semester 2021 and summarize score")
-print(a)
-# try:
-#     # client = chromadb.PersistentClient("./data")
-#     collection = db._client.get_collection(name="abcd")
-#     print(collection)
+# a = get_answer("what happened in Fall semester 2021 and summarize score")
+# print(a)
 
-
-# except Exception as e:
-#     print("error", e)
+# client = chromadb.PersistentClient("./data")
+# embedding2 = OpenAIEmbeddings()
+# db = Chroma(persist_directory="./data", embedding_function=embedding2)
+# # is_collection = db._client.get_collection(name="abcd")
+# s = [c.name for c in db._client.list_collections()]
+# print(s)
