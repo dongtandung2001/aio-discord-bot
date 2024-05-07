@@ -1,24 +1,17 @@
 from PyPDF2 import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import google.generativeai as genai
 import os
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from langchain_community.vectorstores import faiss
 from langchain_community.vectorstores.chroma import Chroma
+from langchain_openai import OpenAI
+from langchain_openai import OpenAIEmbeddings
 
 
 from dotenv import load_dotenv
 
 load_dotenv()
-
-
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
 def get_pdf_text(pdf):
@@ -38,12 +31,12 @@ def get_text_chunks(text):
 
 
 def get_vector_store(text_chunks):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    embedding2 = OpenAIEmbeddings()
     # vector_store = faiss.FAISS.from_texts(text_chunks, embedding=embeddings)
     # vector_store.save_local("faiss_index")
 
     vector_db = Chroma.from_texts(
-        text_chunks, embedding=embeddings, persist_directory="./data"
+        text_chunks, embedding=embedding2, persist_directory="./data"
     )
     vector_db.persist()
     return vector_db
@@ -59,25 +52,22 @@ def get_conversational_chain():
     Answer:
 
     """
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3)
+    model2 = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     prompt = PromptTemplate(
         template=prompt_template, input_variables=["context", "question"]
     )
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+    chain = load_qa_chain(model2, chain_type="stuff", prompt=prompt)
 
     return chain
 
 
 def get_answer(question):
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    # new_db = faiss.FAISS.load_local(
-    #     "faiss_index", embeddings, allow_dangerous_deserialization=True
-    # )
+    embedding2 = OpenAIEmbeddings()
 
-    db = Chroma(persist_directory="./data", embedding_function=embeddings)
+    db = Chroma(persist_directory="./data", embedding_function=embedding2)
 
-    docs = db.similarity_search(question)
+    docs = db.similarity_search(question, k=1)
 
     chain = get_conversational_chain()
 
@@ -85,13 +75,22 @@ def get_answer(question):
         {"input_documents": docs, "question": question}, return_only_outputs=True
     )
 
-    print(response)
+    return response
 
 
-# pdf = "transcript.pdf"
-# raw_text = get_pdf_text(pdf)
-# text_chunks = get_text_chunks(raw_text)
-# get_vector_store(text_chunks)
+pdf = "transcript.pdf"
+raw_text = get_pdf_text(pdf)
+text_chunks = get_text_chunks(raw_text)
+get_vector_store(text_chunks)
 
 
-get_answer("what happened in Fall semester 2021 and summarize score")
+a = get_answer("what happened in Fall semester 2021 and summarize score")
+print(a)
+# try:
+#     # client = chromadb.PersistentClient("./data")
+#     collection = db._client.get_collection(name="abcd")
+#     print(collection)
+
+
+# except Exception as e:
+#     print("error", e)

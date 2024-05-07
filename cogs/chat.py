@@ -1,18 +1,28 @@
+import discord
 from discord.ext import commands
 from discord import File
 from dotenv import load_dotenv
 from collections import defaultdict
 
-import discord
 import os
+import io
 
 load_dotenv()
 
-from openai import OpenAI
+from openai import OpenAI as openai
 
 from PIL import Image
 import requests
 import pytesseract
+
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains.question_answering import load_qa_chain
+from langchain.prompts import PromptTemplate
+from langchain_community.vectorstores.chroma import Chroma
+from langchain_openai import OpenAI
+from langchain_openai import OpenAIEmbeddings
+
 
 # TODO: Add langchain to let users decide the prompt of the answer
 # FIXME: Fix path to return txt file when response > 4000 length when run the bot using Docker
@@ -21,8 +31,6 @@ import pytesseract
 class Chat(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
-        # self.openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        # self.gpt_model = os.environ["OPENAI_CHAT_MODEL"]
 
         self.openai_client = {}
         self.gpt_model = {}
@@ -69,7 +77,7 @@ class Chat(commands.Cog):
 
         async with ctx.typing():
             try:
-                self.openai_client[id] = OpenAI(api_key=api_key)
+                self.openai_client[id] = openai(api_key=api_key)
                 self.gpt_model[id] = "gpt-3.5-turbo-0125"
                 # test request with given apikey
                 self.openai_client[id].chat.completions.create(
@@ -210,6 +218,10 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
+    """
+    Conversation Chat
+    """
+
     # Conversation
     @commands.group(
         name="conversation",
@@ -295,11 +307,126 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
-
     # chat with pdf
-    @commands.group(name='pdf', invoke_without_command=True, help="Chat with PDF")
-    async def pdf(self, ctx):
+    @commands.group(name="pdf", invoke_without_command=True, help="Chat with PDF")
+    async def pdf(self, ctx, arg=None):
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
+
+        if not arg:
+            return await ctx.send(
+                "Please specify a PDF name to chat with. This is only valid on your servers."
+            )
+        await ctx.send("Collection name", arg)
         return
+
+    """
+    PDF With PDF
+    """
+
+    @pdf.command(name="upload", help="Upload pdf file")
+    async def pdf_upload(self, ctx, arg=None):
+        # is_set_up = await self.is_bot_set_up(ctx)
+        # if not is_set_up:
+        #     return
+
+        if not arg:
+            return await ctx.send(
+                "Please specify a name for this PDF in order to search/query it later."
+            )
+
+        if not ctx.message.attachments:
+            await ctx.send("No attachments found")
+
+        # let user chat with 1 pdf at a time for now
+        # update multiple pdf files later
+        if len(ctx.message.attachments) > 1:
+            await ctx.send("Please attach only 1 file at a time")
+
+        # TODO: file hanlding ==> make sure its pdf
+
+        await ctx.send("Processing...")
+        try:
+            # Get PDF object to process
+            pdf_url = ctx.message.attachments[0].url
+            r = requests.get(pdf_url, stream=True)
+            pdf_binary = io.BytesIO(r.content)
+
+            # Raw text
+            raw_text = self.get_pdf_text(pdf_binary)
+            # Text chunks
+            text_chunks = self.get_text_chunks(raw_text)
+            # Embedding
+            self.store_vector(text_chunks, collection=arg)
+
+            await ctx.send(
+                f"Upload successfully. Please refer to {arg} to chat with your document"
+            )
+        except Exception as e:
+            await ctx.send("Fail to upload/process. Please try again")
+
+    def get_pdf_text(self, pdf):
+        text = ""
+
+        pdf_reader = PdfReader(pdf)
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+        return text
+
+    def get_text_chunks(self, text):
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=10000, chunk_overlap=1000
+        )
+
+        chunks = text_splitter.split_text(text)
+        return chunks
+
+    def store_vector(self, text_chunks, collection):
+        embedding2 = OpenAIEmbeddings()
+
+        vector_db = Chroma.from_texts(
+            text_chunks,
+            embedding=embedding2,
+            persist_directory="./data",
+            collection_name=collection,
+        )
+        vector_db.persist()
+        return vector_db
+
+    def get_conversational_chain(self):
+        prompt_template = """
+        Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
+        provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
+        Context:\n {context}?\n
+        Question: \n{question}\n
+
+        Answer:
+
+        """
+        model = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        prompt = PromptTemplate(
+            template=prompt_template, input_variables=["context", "question"]
+        )
+        chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+
+        return chain
+
+    def get_answer(self, question):
+        embedding2 = OpenAIEmbeddings()
+
+        db = Chroma(persist_directory="./data", embedding_function=embedding2)
+
+        docs = db.similarity_search(question, k=1)
+
+        chain = self.get_conversational_chain()
+
+        response = chain.invoke(
+            {"input_documents": docs, "question": question}, return_only_outputs=True
+        )
+
+        return response
 
 
 async def setup(client: commands.Bot) -> None:
