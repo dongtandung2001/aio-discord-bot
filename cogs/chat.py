@@ -22,10 +22,7 @@ from langchain.prompts import PromptTemplate
 from langchain_community.vectorstores.chroma import Chroma
 from langchain_openai import OpenAI
 from langchain_openai import OpenAIEmbeddings
-
-
-# TODO: Add langchain to let users decide the prompt of the answer
-# FIXME: Fix path to return txt file when response > 4000 length when run the bot using Docker
+from chromadb import PersistentClient
 
 
 class Chat(commands.Cog):
@@ -35,7 +32,10 @@ class Chat(commands.Cog):
         self.openai_client = {}
         self.gpt_model = {}
         self.conversations = {}
-        self.chroma_collections = {}
+
+        # Create folder for chat response > 4000 words (limit by Discord.py text channel)
+        directory_name = "chatResponses"
+        os.makedirs(directory_name, exist_ok=True)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -44,7 +44,6 @@ class Chat(commands.Cog):
             self.openai_client[id] = None
             self.gpt_model[id] = None
             self.conversations[id] = defaultdict(list)
-            self.chroma_collections[id] = []
 
     async def is_bot_set_up(self, ctx):
         id = int(ctx.guild.id)
@@ -61,6 +60,10 @@ class Chat(commands.Cog):
     def create_embed(self, ctx, title, msg):
         msg_embed = discord.Embed(title=title, description=msg)
         return msg_embed
+
+    """
+    Setup chat bot
+    """
 
     @commands.group(
         name="setup", invoke_without_command=True, help="Activate server's API key"
@@ -111,6 +114,10 @@ class Chat(commands.Cog):
                 )
                 await ctx.send(embed=error_embed)
 
+    """
+    Update/Modify chat model
+    """
+
     @setup.command(name="chat_model", help="Change chat model of OPENAI API")
     async def chat_model(self, ctx, model):
         # precheck if bot is setup
@@ -149,6 +156,10 @@ class Chat(commands.Cog):
                 )
                 await ctx.send(embed=error_embed)
 
+    """
+    Send response to text channel
+    """
+
     async def answer(self, ctx, response):
         if len(response.choices[0].message.content) < 2000:
             return await ctx.send(response.choices[0].message.content)
@@ -160,13 +171,21 @@ class Chat(commands.Cog):
                 file=File(f"./chatResponses/{ctx.author}.txt"),
             )
 
-    def generate_response(self, id, client, model, messages):
+    """
+    Generate response by making api call to OPENAI API
+    """
+
+    def generate_response(self, client, model, messages):
         response = client.chat.completions.create(
-            model=self.gpt_model[id],
+            model=model,
             messages=messages,
         )
 
         return response
+
+    """
+    Single chat
+    """
 
     @commands.group(
         name="chat", invoke_without_command=True, help="Single chat with the bot"
@@ -180,13 +199,16 @@ class Chat(commands.Cog):
         id = int(ctx.guild.id)
         async with ctx.typing():
             response = self.generate_response(
-                id,
                 self.openai_client[id],
                 self.gpt_model[id],
                 [{"role": "user", "content": args}],
             )
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
+
+    """
+    Single image chat
+    """
 
     @chat.command(
         name="image",
@@ -211,7 +233,6 @@ class Chat(commands.Cog):
 
         async with ctx.typing():
             response = self.generate_response(
-                id,
                 self.openai_client[id],
                 self.gpt_model[id],
                 [{"role": "user", "content": text}],
@@ -240,7 +261,6 @@ class Chat(commands.Cog):
             self.conversations[id][ctx.author].append({"role": "user", "content": args})
 
             response = self.generate_response(
-                id,
                 self.openai_client[id],
                 self.gpt_model[id],
                 self.conversations[id][ctx.author],
@@ -253,12 +273,20 @@ class Chat(commands.Cog):
             # if response length > limit of discord's message, send result through txt file
             return await self.answer(ctx, response)
 
+    """
+    Clear conversation history/memory
+    """
+
     @conversation.command(help="Clear conversation memory")
     async def clear(self, ctx):
         async with ctx.typing():
             id = int(ctx.guild.id)
             self.conversations[id][ctx.author] = []
             return await ctx.send("Conversation cleared")
+
+    """
+    Conversation history
+    """
 
     @conversation.command(help="Show history of conversation")
     async def history(self, ctx):
@@ -273,6 +301,10 @@ class Chat(commands.Cog):
                 )
             )
             return await ctx.send("".join(res))
+
+    """
+    Conversation chat with image
+    """
 
     @conversation.command(
         name="image",
@@ -297,7 +329,6 @@ class Chat(commands.Cog):
 
         async with ctx.typing():
             response = self.generate_response(
-                id,
                 self.openai_client[id],
                 self.gpt_model[id],
                 self.conversations[id][ctx.author],
@@ -317,9 +348,9 @@ class Chat(commands.Cog):
     @commands.group(name="pdf", invoke_without_command=True, help="Chat with PDF")
     async def pdf(self, ctx, *, arg=None):
         id = int(ctx.guild.id)
-        # is_set_up = await self.is_bot_set_up(ctx)
-        # if not is_set_up:
-        #     return
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
 
         if not arg:
             return await ctx.send(
@@ -329,17 +360,22 @@ class Chat(commands.Cog):
         collection = args[0]
         question = " ".join(args[1:])
         response = self.get_answer(question=question, id=id, collection=collection)
-        if not response:
-            return await ctx.send("Filename ref not found")
+
+        if response["status"] == 200:
+            return await ctx.send(response["data"]["output_text"])
         else:
-            return await ctx.send(response["output_text"])
+            return await ctx.send(response["msg"])
+
+    """
+    Upload pdf to server and process
+    """
 
     # TODO: file hanlding ==> make sure its pdf
     @pdf.command(name="upload", help="Upload pdf file")
     async def pdf_upload(self, ctx, *, arg=None):
-        # is_set_up = await self.is_bot_set_up(ctx)
-        # if not is_set_up:
-        #     return
+        is_set_up = await self.is_bot_set_up(ctx)
+        if not is_set_up:
+            return
 
         id = int(ctx.guild.id)
         if not ctx.message.attachments:
@@ -386,6 +422,10 @@ class Chat(commands.Cog):
         except Exception as e:
             await ctx.send("Fail to upload/process. Please try again")
 
+    """
+    Functions for storing pdf file to chromadb
+    """
+
     def get_pdf_text(self, pdf):
         text = ""
 
@@ -410,16 +450,11 @@ class Chat(commands.Cog):
             embedding=embedding,
             persist_directory="./data",
             collection_name=collection,
+            collection_metadata={"guild_id": id},
         )
-
-        self.chroma_collections[id].append(collection)
-
-        vector_db.persist()
         return vector_db
 
     def get_conversational_chain(self, id):
-        # self.openai_client[id]
-
         prompt_template = """
         Answer the question as detailed as possible from the provided context, make sure to provide all the details, if the answer is not in
         provided context just say, "answer is not available in the context", don't provide the wrong answer\n\n
@@ -440,14 +475,20 @@ class Chat(commands.Cog):
         return chain
 
     def get_answer(self, question, id, collection):
-        if collection not in self.chroma_collections[id]:
-            return None
+        try:
+            client = PersistentClient(path="./data")
+            c = client.get_collection(collection)
+            if c.metadata.get("guild_id") != id:
+                return {"status": 401, "msg": "Filename ref not found"}
+        except Exception as e:
+            return {"status": 404, "msg": "Filename ref not found"}
 
         embedding = OpenAIEmbeddings()
         db = Chroma(
             persist_directory="./data",
             embedding_function=embedding,
             collection_name=collection,
+            collection_metadata={"guild_id": id},
         )
 
         docs = db.similarity_search(question)
@@ -458,7 +499,7 @@ class Chat(commands.Cog):
             {"input_documents": docs, "question": question}, return_only_outputs=True
         )
 
-        return response
+        return {"status": 200, "data": response, "msg": "OK"}
 
 
 async def setup(client: commands.Bot) -> None:

@@ -8,6 +8,7 @@ from langchain_community.vectorstores.chroma import Chroma
 from langchain_openai import OpenAI
 from langchain_openai import OpenAIEmbeddings
 
+from chromadb import PersistentClient
 
 from dotenv import load_dotenv
 
@@ -40,6 +41,7 @@ def get_vector_store(text_chunks):
         embedding=embedding2,
         persist_directory="./data",
         collection_name="abc",
+        collection_metadata={"id": "id"},
     )
     vector_db.persist()
     return vector_db
@@ -68,7 +70,12 @@ def get_conversational_chain():
 def get_answer(question):
     embedding2 = OpenAIEmbeddings()
 
-    db = Chroma(persist_directory="./data", embedding_function=embedding2)
+    db = Chroma(
+        persist_directory="./data",
+        embedding_function=embedding2,
+        collection_name="abc",
+        collection_metadata={"id": "id"},
+    )
 
     docs = db.similarity_search(question, k=1)
 
@@ -81,18 +88,29 @@ def get_answer(question):
     return response
 
 
-pdf = "transcript.pdf"
-raw_text = get_pdf_text(pdf)
-text_chunks = get_text_chunks(raw_text)
-get_vector_store(text_chunks)
+# pdf = "transcript.pdf"
+# raw_text = get_pdf_text(pdf)
+# text_chunks = get_text_chunks(raw_text)
+# get_vector_store(text_chunks)
 
 
 # a = get_answer("what happened in Fall semester 2021 and summarize score")
 # print(a)
 
-# client = chromadb.PersistentClient("./data")
+# # client = chromadb.PersistentClient("./data")
 # embedding2 = OpenAIEmbeddings()
-# db = Chroma(persist_directory="./data", embedding_function=embedding2)
+# db = Chroma(
+#     persist_directory="./data", embedding_function=embedding2, collection_name="abc"
+# )
 # # is_collection = db._client.get_collection(name="abcd")
-# s = [c.name for c in db._client.list_collections()]
+# s = [c for c in db._client.list_collections()]
 # print(s)
+
+
+try:
+    client = PersistentClient(path="./data")
+    c = client.get_collection("abc")
+    print(c)
+    
+except Exception as e:
+    print("error", e)
