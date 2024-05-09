@@ -32,5 +32,9 @@ jobs:
           gcloud auth configure-docker us-west1-docker.pkg.dev
           docker build -t us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest .
           docker push us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest
-          gcloud compute instances update-container $GC_CE_VM_INSTANCE_NAME --container-image us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest --zone us-west1-b
-
+      
+      - name: Update Google Cloud instance
+        run: |
+          gcloud compute instances stop $GC_CE_VM_INSTANCE_NAME --zone=us-west1-b      
+          gcloud compute instances update-container $GC_CE_VM_INSTANCE_NAME --container-image=us-west1-docker.pkg.dev/$GC_PROJECT_ID/$GC_AR_REPO/$GC_AR_DISCORD_BOT_IMAGE:latest --zone=us-west1-b
+          gcloud compute instances start $GC_CE_VM_INSTANCE_NAME --zone=us-west1-b
