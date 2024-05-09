@@ -445,7 +445,8 @@ class Chat(commands.Cog):
         return chunks
 
     def store_vector(self, text_chunks, collection, id):
-        embedding = OpenAIEmbeddings()
+        api_key = self.openai_client[id].api_key
+        embedding = OpenAIEmbeddings(api_key=api_key)
 
         vector_db = Chroma.from_texts(
             text_chunks,
@@ -484,8 +485,8 @@ class Chat(commands.Cog):
                 return {"status": 401, "msg": "Filename ref not found"}
         except Exception as e:
             return {"status": 404, "msg": "Filename ref not found"}
-
-        embedding = OpenAIEmbeddings()
+        api_key = self.openai_client[id].api_key
+        embedding = OpenAIEmbeddings(api_key=api_key)
         db = Chroma(
             persist_directory="./data",
             embedding_function=embedding,
