@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import os
 import io
+import logging
 
 load_dotenv()
 
@@ -420,6 +421,7 @@ class Chat(commands.Cog):
                 f"Upload successfully. Please refer to {arg} to chat with your document"
             )
         except Exception as e:
+            logging.error("Fail to upload pdf", e)
             await ctx.send("Fail to upload/process. Please try again")
 
     """
