@@ -7,6 +7,7 @@ from collections import defaultdict
 import os
 import io
 import logging
+import sqlite3
 
 load_dotenv()
 
@@ -503,6 +504,64 @@ class Chat(commands.Cog):
         )
 
         return {"status": 200, "data": response, "msg": "OK"}
+
+    """
+    Manage chroma collection of servers
+    """
+
+    """
+    Show collection within server
+    """
+
+    @commands.group(
+        name="collection",
+        invoke_without_command=True,
+        help="Show pdf filename ref in server",
+    )
+    async def collection(self, ctx):
+        id = (int(ctx.guild.id),)
+        con = sqlite3.connect("./data/chroma.sqlite3")
+        cur = con.cursor()
+        res = cur.execute(
+            "SELECT c.name from collections as c \
+            JOIN collection_metadata on c.id = collection_metadata.collection_id \
+            WHERE collection_metadata.key = 'guild_id' AND collection_metadata.int_value = ?",
+            id,
+        )
+        collections = "\n".join([c[0] for c in res.fetchall()])
+        con.close()
+        return await ctx.send(collections)
+
+    """
+    Delete collection in your server
+    """
+
+    @collection.command(name="delete")
+    async def delete(self, ctx, arg):
+        id = int(ctx.guild.id)
+        client = PersistentClient(path="./data")
+        try:
+            collection = client.get_collection(name=arg)
+            collection_id = str(collection.id)
+            if collection.metadata["guild_id"] != id:
+                return await ctx.send("Collection does not exist in your server")
+            else:
+                client.delete_collection(name=arg)
+                # Delete metadata related to collections to free space
+                con = sqlite3.connect("./data/chroma.sqlite3")
+                cur = con.cursor()
+                param = (str(collection_id),)
+                cur.execute(
+                    "DELETE FROM collection_metadata \
+                    WHERE collection_id = ? \
+                    ",
+                    param,
+                )
+                con.commit()
+                con.close()
+                return await ctx.send("Deleted")
+        except Exception as e:
+            return await ctx.send("Collection does not exist in your server")
 
 
 async def setup(client: commands.Bot) -> None:
