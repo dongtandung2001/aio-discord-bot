@@ -372,7 +372,6 @@ class Chat(commands.Cog):
     Upload pdf to server and process
     """
 
-    # TODO: file hanlding ==> make sure its pdf
     @pdf.command(name="upload", help="Upload pdf file")
     async def pdf_upload(self, ctx, *, arg=None):
         is_set_up = await self.is_bot_set_up(ctx)

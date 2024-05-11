@@ -7,10 +7,6 @@ from asyncio import run_coroutine_threadsafe
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 
-# TODO: shuffle queue
-
-# TODO: Dont add same track from replay to history
-
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, original: discord.FFmpegPCMAudio, *, info, volume: float = 0.5):
