@@ -404,7 +404,13 @@ class Chat(commands.Cog):
                 "Filename reference cant contain special characters, and it cant start with number"
             )
 
+        # File must be pdf
+        file_extension = ctx.message.attachments[0].filename[-4:]
+        if file_extension != ".pdf":
+            return await ctx.send("File Extension Error. Not PDF file")
+
         await ctx.send("Processing...")
+
         try:
             # Get PDF object to process
             pdf_url = ctx.message.attachments[0].url
