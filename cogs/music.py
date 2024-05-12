@@ -95,7 +95,7 @@ class Music(commands.Cog):
 
         self.queue = {}
         self.history = {}
-        self.replay = {}
+        self.loop = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -107,7 +107,7 @@ class Music(commands.Cog):
             id = int(guild.id)
             self.queue[id] = []
             self.history[id] = []
-            self.replay[id] = False
+            self.loop[id] = False
             self.vc[id] = None
 
     @commands.Cog.listener()
@@ -292,7 +292,7 @@ class Music(commands.Cog):
             return
 
         # check if replay option is on:
-        if self.replay[id]:
+        if self.loop[id]:
             # check if there is something in the history to replay
             if len(self.history[id]) > 0:
                 self.replay_helper(ctx, id)
@@ -313,9 +313,6 @@ class Music(commands.Cog):
 
             else:
                 # get the next in queue
-
-                print("check", self.queue[id][0] == self.history[id][-1])
-
                 self.history[id].append(self.queue[id].pop(0))
                 source = self.history[id][-1]
 
@@ -395,7 +392,7 @@ class Music(commands.Cog):
             logging.error(f"Music.skip:", e)
 
     @commands.command(help="Instant the replay the current track")
-    async def instant_replay(self, ctx):
+    async def replay(self, ctx):
         id = int(ctx.guild.id)
         self.vc[id].pause()
         replay_source = self.replay_helper(ctx, id)
@@ -403,21 +400,21 @@ class Music(commands.Cog):
         await ctx.send(embed=replay_embed)
 
     @commands.command(
-        name="replay",
+        name="loop",
         help="Turn on replay mode: replay the current track\
                 Use it again to turn it off",
     )
     @is_user_in_vc()
-    async def replay(self, ctx):
+    async def loop(self, ctx):
         id = int(ctx.guild.id)
-        self.replay[id] = not self.replay[id]
+        self.loop[id] = not self.loop[id]
         # On
-        if self.replay[id]:
-            replay_msg = self.create_embed(ctx, None, 3, "Replay: On")
-            await ctx.send(embed=replay_msg)
+        if self.loop[id]:
+            msg = self.create_embed(ctx, None, 3, "Replay: On")
+            await ctx.send(embed=msg)
         else:
-            replay_msg = self.create_embed(ctx, None, 3, "Replay: Off")
-            await ctx.send(embed=replay_msg)
+            msg = self.create_embed(ctx, None, 3, "Replay: Off")
+            await ctx.send(embed=msg)
 
     @commands.command(name="disconnect", help="Disconnect bot from voice channel")
     async def disconnect(self, ctx):
@@ -470,6 +467,16 @@ class Music(commands.Cog):
         id = int(ctx.guild.id)
         self.queue[id] = []
         return await ctx.send("Queue cleared")
+
+    @commands.command(help="Reset music bot in case it is broken")
+    @is_user_in_vc()
+    async def reset(self, ctx):
+        id = int(ctx.guild.id)
+        channel = ctx.message.author.voice.channel
+        await self.vc[id].disconnect()
+        self.vc[id] = await channel.connect()
+        await self.vc[id].disconnect()
+        return await ctx.send("Music bot reset successfully")
 
 
 async def setup(client: commands.Bot) -> None:

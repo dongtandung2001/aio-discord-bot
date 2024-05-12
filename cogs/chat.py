@@ -22,7 +22,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain_community.vectorstores.chroma import Chroma
-from langchain_openai import OpenAI
+from langchain_openai import OpenAI, ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 from chromadb import PersistentClient
 
@@ -474,7 +474,7 @@ class Chat(commands.Cog):
         
         """
         api_key = self.openai_client[id].api_key
-        model = OpenAI(api_key=api_key)
+        model = ChatOpenAI(api_key=api_key, model="gpt-4-1106-preview")
 
         prompt = PromptTemplate(
             template=prompt_template, input_variables=["context", "question"]
@@ -535,7 +535,10 @@ class Chat(commands.Cog):
         )
         collections = "\n".join([c[0] for c in res.fetchall()])
         con.close()
-        return await ctx.send(collections)
+        if collections:
+            return await ctx.send(collections)
+        else:
+            return await ctx.send("No collections")
 
     """
     Delete collection in your server

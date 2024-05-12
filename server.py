@@ -23,7 +23,7 @@ formatter = logging.basicConfig(
 class Client(commands.Bot):
     def __init__(self):
         super().__init__(
-            command_prefix=commands.when_mentioned_or("."),
+            command_prefix=commands.when_mentioned_or(os.getenv("COMMAND_PREFIX")),
             intents=discord.Intents().all(),
         )
 
